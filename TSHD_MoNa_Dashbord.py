@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import pytz
+from shapely.geometry import Point
+import numpy as np
 
 
 #=== Einlesen und Parsen der MoNa-Dateien --> modul_mona_import.py ============================================================
@@ -50,6 +52,51 @@ def plot_x(df, mask, zeitzone):
     return df.loc[mask, col]
 
 
+#=========================================================================================
+
+def berechne_solltiefe_fuer_df(df, baggerfelder, seite, toleranz_oben=1.0, toleranz_unten=0.5):
+    if not baggerfelder or "RW_Schiff" not in df or "HW_Schiff" not in df:
+        df["Solltiefe_Aktuell"] = None
+        return df
+
+    # Koordinaten im WGS84 berechnen (wie im Map-Plot!)
+    from pyproj import Transformer
+    transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
+    
+    # Seite wählen: BB, SB, BB+SB (hier einfach: zuerst BB, dann SB – wie bei Map)
+    rw_col = "RW_BB" if seite in ["BB", "BB+SB"] and "RW_BB" in df else "RW_SB"
+    hw_col = "HW_BB" if seite in ["BB", "BB+SB"] and "HW_BB" in df else "HW_SB"
+
+    # Wenn Spalten nicht vorhanden: auf RW_Schiff/HW_Schiff zurückfallen
+    if rw_col not in df or hw_col not in df:
+        rw_col = "RW_Schiff"
+        hw_col = "HW_Schiff"
+
+    solltiefen = []
+    for idx, row in df.iterrows():
+        try:
+            x, y = row[rw_col], row[hw_col]
+            lon, lat = transformer.transform(x, y)
+            punkt = Point(lon, lat)
+            matched = False
+            for feld in baggerfelder:
+                if feld["polygon"].contains(punkt):
+                    solltiefen.append(feld["solltiefe"])
+                    matched = True
+                    break
+            if not matched:
+                solltiefen.append(None)
+        except Exception:
+            solltiefen.append(None)
+    df["Solltiefe_Aktuell"] = solltiefen
+
+    
+    if "Solltiefe_Aktuell" in df.columns:
+        df["Solltiefe_Oben"] = df["Solltiefe_Aktuell"] + toleranz_oben
+        df["Solltiefe_Unten"] = df["Solltiefe_Aktuell"] - toleranz_unten
+        
+    return df
+
 #=== START der Routine  =======================================================================================================
 
 st.set_page_config(page_title="TSHD-MoNa Dashboard - MvdK", layout="wide")
@@ -73,7 +120,8 @@ koordsys_status = st.sidebar.empty()
 
 
 #=== Parameter Dichte  =======================================================================================================
-with st.sidebar.expander("🚢  Berechnungs-Setup"):
+with st.sidebar.expander("🚢 Berechnungs-Setup"):
+    #---- Eingabe - Feststoffdichte
     pf = st.number_input(
         "Feststoffdichte pf [t/m³]",
         min_value=2.0,
@@ -82,6 +130,7 @@ with st.sidebar.expander("🚢  Berechnungs-Setup"):
         step=0.001,
         format="%.3f"
     )
+    #---- Eingabe - Wasserdichte
     pw = st.number_input(
         "Wasserdichte pw [t/m³]",
         min_value=1.0,
@@ -90,6 +139,7 @@ with st.sidebar.expander("🚢  Berechnungs-Setup"):
         step=0.001,
         format="%.3f"
     )
+    #---- Eingabe - min. Geschwindigkeit Leerfahrt
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
         min_value=0.0,
@@ -98,7 +148,21 @@ with st.sidebar.expander("🚢  Berechnungs-Setup"):
         step=0.01,
         format="%.2f"
     )
-
+    toleranz_oben = st.slider(
+        "Obere Toleranz (m)",
+        min_value=0.0,
+        max_value=2.0,
+        value=1.0,
+        step=0.1
+    )
+    toleranz_unten = st.slider(
+        "Untere Toleranz (m)",
+        min_value=0.0,
+        max_value=2.0,
+        value=0.5,
+        step=0.1
+    )
+    
 # === MoNa Daten einlesen =====================================================================================================
 if uploaded_files:
     try:
@@ -262,6 +326,7 @@ if uploaded_files:
             except Exception as e:
                 xml_status.error(f"Fehler beim Verarbeiten der XML-Dateien: {e}")        
         
+        df = berechne_solltiefe_fuer_df(df, baggerfelder, seite, toleranz_oben, toleranz_unten)
 
 
 #=== Umlaufinformationen ======================================================================================================
@@ -745,10 +810,13 @@ if uploaded_files:
         with tab3:
         
         # --- 2. Spezialdiagramm: NUR Abs_Tiefe_Kopf_ (Status==2, split by gap) ----------------------------------------------------------------
+
             kurven_abs_tiefe = [
-                {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#B22222", "sichtbar": True},  # Hier definieren wir, welche Kurve angezeigt werden soll (Abs. Tiefe Kopf)
+                {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "dicke": 2, "dash": None},   # Dunkelgrün
+                {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "dicke": 2, "dash": "dash"},    # Rot, gestrichelt
             ]
             
+           
             fig2 = go.Figure()  # Erstelle ein neues leeres Plotly-Diagramm
             
             # Schleife durch alle Kurven, die im Spezialdiagramm angezeigt werden sollen
@@ -788,8 +856,9 @@ if uploaded_files:
             
                             # Bestimme das Minimum und Maximum der Y-Werte für das Segment
                             y_min = y.min()
-                            y_max = 0.0  # Der Maximalwert für das Diagramm soll immer 0 (Wasseroberfläche) sein
-            
+                            #y_max = -2.0  # Der Maximalwert für das Diagramm soll immer 0 (Wasseroberfläche) sein
+                            y_max = y.max() + 4 
+                                        
                             # Padding berechnen (Puffer) für das Minimum
                             padding = abs(y_min) * 0.1 if abs(y_min) > 0 else 1
                             y_min -= padding  # Füge Puffer zum Minimum hinzu
@@ -802,7 +871,11 @@ if uploaded_files:
                                 name=f"{label} ({s[-2:]})" if seg_id == 0 else None,  # Name der Kurve (für die Legende)
                                 customdata=pd.DataFrame({"original": y}),  # Speichere die originalen Y-Werte für den Hover-Text
                                 hovertemplate=f"{label} ({s[-2:]}): %{{customdata[0]:.2f}}<extra></extra>",  # Tooltip für den Hover-Effekt
-                                line=dict(color=farbe),  # Farbe der Linie
+                                line=dict(
+                                    color=farbe,
+                                    width=k.get("dicke", 2),
+                                    dash=k.get("dash", None)
+                                ),  # Farbe der Linie
                                 visible=True,  # Die Kurve soll sichtbar sein
                                 connectgaps=False,  # Keine Lücken zwischen den Punkten, falls Daten fehlen
                                 showlegend=(seg_id == 0),  # Zeige die Legende nur für das erste Segment
@@ -834,7 +907,8 @@ if uploaded_files:
                             continue
             
                         y_min = y.min()
-                        y_max = 0.0
+                        #y_max = 0.0
+                        y_max = y.max() + 4
                         padding = abs(y_min) * 0.1 if abs(y_min) > 0 else 1
                         y_min -= padding
             
@@ -845,11 +919,48 @@ if uploaded_files:
                             name=label if seg_id == 0 else None,
                             customdata=pd.DataFrame({"original": y}),
                             hovertemplate=f"{label}: %{{customdata[0]:.2f}}<extra></extra>",
-                            line=dict(color=farbe),
+                            line=dict(
+                                color=farbe,
+                                width=k.get("dicke", 2),
+                                dash=k.get("dash", None)
+                            ),
                             visible=True,
                             connectgaps=False,
                             showlegend=(seg_id == 0),
                         ))
+            
+       
+             # --- Nach dem Plotten der Kurven (z.B. Abs_Tiefe_Kopf und Solltiefe), aber vor update_layout ---
+            
+            import numpy as np
+            
+            # Stelle sicher, dass die Spalten existieren und Daten da sind!
+            if (
+                "Solltiefe_Aktuell" in df_plot.columns
+                and "Solltiefe_Oben" in df_plot.columns
+                and "Solltiefe_Unten" in df_plot.columns
+            ):
+                # Nur Status==2 Daten (wie beim Tiefen-Plot)
+                status_mask = df_plot["Status"] == 2
+                x = df_plot.loc[status_mask, "timestamp"]
+                y_oben = df_plot.loc[status_mask, "Solltiefe_Oben"]
+                y_unten = df_plot.loc[status_mask, "Solltiefe_Unten"]
+            
+                # Korridor als Fläche (filled area)
+                fig2.add_trace(go.Scatter(
+                    x=np.concatenate([x, x[::-1]]),  # Vorwärts, rückwärts
+                    y=np.concatenate([y_oben, y_unten[::-1]]),
+                    fill='toself',
+                    fillcolor='rgba(255,0,0,0.13)',   # Blasses Rot, gerne anpassen!
+                    line=dict(color='rgba(255,0,0,0)'),
+                    hoverinfo='skip',
+                    name='Toleranzbereich',
+                    showlegend=True,
+                ))
+            
+            # --- ab hier wie gehabt update_layout etc. ---
+
+ 
             
             # --- Layout aktualisieren ---
             st.markdown("#### Baggerkopftiefe")
@@ -857,7 +968,7 @@ if uploaded_files:
                 height=500,  # Höhe des Diagramms
                 yaxis=dict(
                     title="Tiefe [m]",  # Y-Achse bezeichnen
-                    range=[y_min, 0],         # Die Tiefe beginnt bei y_min und geht bis 0 (Oberfläche)
+                    range=[y_min, y_max],         # Die Tiefe beginnt bei y_min und geht bis 0 (Oberfläche)
                     showgrid=True,  # Gitterlinien anzeigen
                     gridcolor="lightgray"  # Farbe der Gitterlinien
                 ),
