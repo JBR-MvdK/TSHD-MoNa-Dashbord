@@ -105,15 +105,25 @@ st.title("📊 TSHD-MoNa Dashboard - MvdK")
 # Sidebar für Datei-Upload
 st.sidebar.header("📂 Datei-Upload")
 
-# MoNa Daten auswählen
-uploaded_files = st.sidebar.file_uploader("Mehrere MoNa-Dateien (.txt)", type=["txt"], accept_multiple_files=True)
-upload_status = st.sidebar.empty()  # Platz für spätere Erfolgsmeldung
+with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):  # expanded=False wenn zugeklappt starten soll
+    # MoNa Daten auswählen
+    uploaded_files = st.file_uploader(
+        "MoNa-Dateien (.txt) auswählen", 
+        type=["txt"], 
+        accept_multiple_files=True,
+        key="mona_upload"
+    )
+    upload_status = st.empty()  # Platz für Erfolgsmeldung
 
-# Polygone als XML-Datei auswählen
-uploaded_xml_files = st.sidebar.file_uploader(
-    "Baggerfeldgrenzen (XML mit Namespace)", type=["xml"], accept_multiple_files=True
-)
-xml_status = st.sidebar.empty()  # Platz für XML-Status
+    # Polygone als XML-Datei auswählen
+    uploaded_xml_files = st.file_uploader(
+        "Baggerfeldgrenzen (XML)", 
+        type=["xml"], 
+        accept_multiple_files=True,
+        key="xml_upload"
+    )
+    xml_status = st.empty()  # Platz für XML-Status
+
 
 # Erfolgsmedlung ob Koordinatensysten erkannt wurde 
 koordsys_status = st.sidebar.empty()  
@@ -135,7 +145,7 @@ with st.sidebar.expander("🚢 Berechnungs-Setup"):
         "Wasserdichte pw [t/m³]",
         min_value=1.0,
         max_value=1.1,
-        value=1.022,
+        value=1.025,
         step=0.001,
         format="%.3f"
     )
@@ -152,7 +162,7 @@ with st.sidebar.expander("🚢 Berechnungs-Setup"):
         "Obere Toleranz (m)",
         min_value=0.0,
         max_value=2.0,
-        value=1.0,
+        value=0.5,
         step=0.1
     )
     toleranz_unten = st.slider(
@@ -450,12 +460,11 @@ if uploaded_files:
 
         # === Tabs definieren ===
         tab1, tab2, tab3, tab4 = st.tabs([
-            "🗺️ Übersichtskarten",
-            "📈 Prozeßdaten",
-            "📈 Baggerkopftiefe",
-            "📋 Umlauftabelle - Gesamt",
-    
-         ])
+            "🗺️ Karte",
+            "📈 Prozess",
+            "📉 Tiefe",
+            "📋 Umläufe"
+        ])
 #==============================================================================================================================
 # Tab - Übersichtskarten 
 #==============================================================================================================================
@@ -678,10 +687,20 @@ if uploaded_files:
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
 #==============================================================================================================================
-# Tab 2 - Diagramm Baggerdaten
+# Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
         
-        #st.markdown("<h3 style='font-size: 24px'>Diagrammdarstellung</h3>", unsafe_allow_html=True)
+        
+        def status_bereiche(df, status_liste):
+            mask = df["Status"].isin(status_liste)
+            indices = mask.astype(int).diff().fillna(0)
+            starts = df.index[(indices == 1)].tolist()
+            ends = df.index[(indices == -1)].tolist()
+            if mask.iloc[0]:
+                starts = [df.index[0]] + starts
+            if mask.iloc[-1]:
+                ends = ends + [df.index[-1]]
+            return starts, ends
         
 
         with tab2:
@@ -708,7 +727,8 @@ if uploaded_files:
             kurven_haupt = [
                 {"spaltenname": "Status", "label": "Status", "farbe": "#BDB76B", "sichtbar": False},
                 {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#6699CC", "sichtbar": False},
-                {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#82A07A", "sichtbar": False},
+                #{"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#82A07A", "sichtbar": False},
+                {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#82A07A", "sichtbar": False, "nur_baggern": True},
                 {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#8C8C8C", "sichtbar": True},
                 {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True},
                 {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#A1584F", "sichtbar": False},
@@ -721,6 +741,51 @@ if uploaded_files:
         
             df_plot = df.copy()
             fig = go.Figure()
+
+
+        # Bereich mit Status==2 (Baggern) optisch hervorheben
+            df_plot = df_plot.sort_values("timestamp").reset_index(drop=True)
+            status2 = df_plot["Status"] == 2
+            wechsel = status2.astype(int).diff().fillna(0)
+            starts = df_plot.index[(wechsel == 1)].tolist()
+            ends = df_plot.index[(wechsel == -1)].tolist()
+            
+            if status2.iloc[0]:
+                starts = [0] + starts
+            if status2.iloc[-1]:
+                ends = ends + [len(df_plot) - 1]
+            
+            # ---- Farbige Bereiche für Status == 2 (Baggern)
+            starts2, ends2 = status_bereiche(df, [2])
+            for start, end in zip(starts2, ends2):
+                x0 = df.loc[start, "timestamp"]
+                x1 = df.loc[end, "timestamp"]
+                if zeitzone != "UTC":
+                    x0 = convert_timestamp(x0, zeitzone)
+                    x1 = convert_timestamp(x1, zeitzone)
+                fig.add_vrect(
+                    x0=x0, x1=x1,
+                    fillcolor="rgba(0,180,255,0.12)",  # blass türkis
+                    layer="below", line_width=0,
+                    annotation_text="Baggern", annotation_position="top left"
+                )
+            
+            # ---- Farbige Bereiche für Status 4/5/6 (Verbringen)
+            starts4, ends4 = status_bereiche(df, [4, 5, 6])
+            for start, end in zip(starts4, ends4):
+                x0 = df.loc[start, "timestamp"]
+                x1 = df.loc[end, "timestamp"]
+                if zeitzone != "UTC":
+                    x0 = convert_timestamp(x0, zeitzone)
+                    x1 = convert_timestamp(x1, zeitzone)
+                fig.add_vrect(
+                    x0=x0, x1=x1,
+                    fillcolor="rgba(0,255,80,0.11)",  # blass grün
+                    layer="below", line_width=0,
+                    annotation_text="Verbringen", annotation_position="top left"
+                )
+            
+            
             for k in kurven_haupt:
                 spalten = get_spaltenname(k["spaltenname"], seite)
                 farbe = k["farbe"]
@@ -744,7 +809,7 @@ if uploaded_files:
                         padding = (y_max - y_min) * 0.1 if y_max != y_min else 1
                         y_min -= padding
                         y_max += padding
-                        y_norm = (y_max - y) / (y_max - y_min)
+                        y_norm = (y - y_min) / (y_max - y_min)
                         fig.add_trace(go.Scatter(
                             x=x,
                             y=y_norm,
@@ -758,15 +823,24 @@ if uploaded_files:
                 else:
                     if spalten not in df.columns:
                         continue
-                    y = pd.to_numeric(df[spalten], errors="coerce")
-                    x = plot_x(df, df.index, zeitzone)
+                    #y = pd.to_numeric(df[spalten], errors="coerce")
+                    #x = plot_x(df, df.index, zeitzone)
+                    
+                    if k.get("nur_baggern"):
+                        mask = df["Status"] == 2
+                    else:
+                        mask = pd.Series([True]*len(df), index=df.index)
+                    y = pd.to_numeric(df.loc[mask, spalten], errors="coerce")
+                    x = plot_x(df, mask, zeitzone)                    
+                    
+                    
                     y_min, y_max = y.min(), y.max()
                     if pd.isna(y_min) or pd.isna(y_max) or y_max == y_min:
                         continue
                     padding = (y_max - y_min) * 0.1 if y_max != y_min else 1
                     y_min -= padding
                     y_max += padding
-                    y_norm = (y_max - y) / (y_max - y_min)
+                    y_norm = (y - y_min) / (y_max - y_min)
                     fig.add_trace(go.Scatter(
                         x=x,
                         y=y_norm,
@@ -800,7 +874,7 @@ if uploaded_files:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-
+        
             
 #==============================================================================================================================
 # Tab 3 - Diagramm Tiefe Baggerkopf 
@@ -929,10 +1003,26 @@ if uploaded_files:
                             showlegend=(seg_id == 0),
                         ))
             
-       
-             # --- Nach dem Plotten der Kurven (z.B. Abs_Tiefe_Kopf und Solltiefe), aber vor update_layout ---
-            
-            import numpy as np
+
+       # --- Dynamische Skalierung der Y-Achse auf Basis der Baggertiefe
+            tiefe_col = get_spaltenname("Abs_Tiefe_Kopf_", seite)
+            if isinstance(tiefe_col, list):
+                vorhandene = [col for col in tiefe_col if col in df_plot.columns]
+                if vorhandene:
+                    df_plot["_tmp_tiefe_mittel"] = df_plot[vorhandene].mean(axis=1)
+                    tiefe_col = "_tmp_tiefe_mittel"
+                else:
+                    tiefe_col = tiefe_col[0]
+            mask_tiefe = (df_plot["Status"] == 2) & df_plot[tiefe_col].notnull()
+            if mask_tiefe.sum() > 0:
+                tiefen = df_plot.loc[mask_tiefe, tiefe_col]
+                y_min = tiefen.min() - 2    # 1 Meter tiefer als Minimum
+                y_max = tiefen.max() + 2    # 4 Meter flacher als Maximum
+            else:
+                y_min = -20
+                y_max = 0
+                    
+
             
             # Stelle sicher, dass die Spalten existieren und Daten da sind!
             if (
@@ -942,16 +1032,15 @@ if uploaded_files:
             ):
                 # Nur Status==2 Daten (wie beim Tiefen-Plot)
                 status_mask = df_plot["Status"] == 2
-                x = df_plot.loc[status_mask, "timestamp"]
+                x_corridor = plot_x(df_plot, status_mask, zeitzone)
                 y_oben = df_plot.loc[status_mask, "Solltiefe_Oben"]
                 y_unten = df_plot.loc[status_mask, "Solltiefe_Unten"]
             
-                # Korridor als Fläche (filled area)
                 fig2.add_trace(go.Scatter(
-                    x=np.concatenate([x, x[::-1]]),  # Vorwärts, rückwärts
+                    x=np.concatenate([x_corridor, x_corridor[::-1]]),
                     y=np.concatenate([y_oben, y_unten[::-1]]),
                     fill='toself',
-                    fillcolor='rgba(255,0,0,0.13)',   # Blasses Rot, gerne anpassen!
+                    fillcolor='rgba(255,0,0,0.13)',
                     line=dict(color='rgba(255,0,0,0)'),
                     hoverinfo='skip',
                     name='Toleranzbereich',
