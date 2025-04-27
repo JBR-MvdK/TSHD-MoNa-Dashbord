@@ -404,12 +404,11 @@ if uploaded_files:
 
         
         # === Tabs definieren ===
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4 = st.tabs([
             "🗺️ Karte",
             "📈 Prozess",
             "📉 Tiefe",
             "📋 Umläufe - gesamt",
-            "📋 Umlauf - Auswertung"
         ])
 #==============================================================================================================================
 # Tab - Übersichtskarten 
@@ -712,6 +711,125 @@ if uploaded_files:
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
+
+        def berechne_umlauf_kennzahlen(row, df):
+            t_start = pd.to_datetime(row["Start Leerfahrt"])
+            t_ende = pd.to_datetime(row["Ende"])
+            # Zeitzonen-Anpassung (nur wenn im df vorhanden!)
+            if hasattr(df["timestamp"].iloc[0], "tzinfo") and df["timestamp"].dt.tz is not None:
+                if t_start.tzinfo is None:
+                    t_start = t_start.tz_localize("UTC")
+                if t_ende.tzinfo is None:
+                    t_ende = t_ende.tz_localize("UTC")
+            mask = (df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)
+        
+            # Filter das df auf diesen Umlauf
+            df_umlauf = df[mask]
+        
+            # Berechne die Zeitabschnitte
+            start_baggern = pd.to_datetime(row.get("Start Baggern"))
+            start_vollfahrt = pd.to_datetime(row.get("Start Vollfahrt"))
+            start_verklapp = pd.to_datetime(row.get("Start Verklappen/Pump/Rainbow"))
+            
+            umlaufdauer = (t_ende - t_start).total_seconds() / 60 if t_ende and t_start else None
+            baggerzeit = (start_vollfahrt - start_baggern).total_seconds() / 60 if start_vollfahrt and start_baggern else None
+            
+            # Mengen/Volumina als Maximum im Zeitraum
+            # --- Mengen/Volumina korrekt berechnen: voll - leer während Baggern (Status==2) ---
+            # Sicherstellen, dass die Werte berechnet sind
+            df_baggern = df_umlauf[df_umlauf["Status"] == 2]
+            
+            gewicht_leer = df_baggern["Verdraengung"].iloc[0] if not df_baggern.empty else None
+            gewicht_voll = df_baggern["Verdraengung"].iloc[-1] if not df_baggern.empty else None
+            ladungsmasse = gewicht_voll - gewicht_leer if gewicht_voll is not None and gewicht_leer is not None else None
+            
+            volumen_leer = df_baggern["Ladungsvolumen"].iloc[0] if not df_baggern.empty else None
+            volumen_voll = df_baggern["Ladungsvolumen"].iloc[-1] if not df_baggern.empty else None
+            ladungsvolumen = volumen_voll - volumen_leer if volumen_voll is not None and volumen_leer is not None else None
+            
+            # Formatierte Strings für die Anzeige
+            gewicht_leer_disp = f"{gewicht_leer:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if gewicht_leer is not None else "-"
+            gewicht_voll_disp = f"{gewicht_voll:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if gewicht_voll is not None else "-"
+            volumen_leer_disp = f"{volumen_leer:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if volumen_leer is not None else "-"
+            volumen_voll_disp = f"{volumen_voll:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if volumen_voll is not None else "-"
+            ladungsmasse_disp = f"{ladungsmasse:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if ladungsmasse is not None else "-"
+            ladungsvolumen_disp = f"{ladungsvolumen:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if ladungsvolumen is not None else "-"
+
+
+            # Andere KPIs wie gehabt (z. B. max während des Umlaufs, nicht nur während Baggern)
+            ladungsdichte = df_umlauf["Ladungsdichte"].max()
+            abrechnungsvolumen = df_umlauf["Abrechnungsvolumen"].max() if "Abrechnungsvolumen" in df_umlauf.columns else None
+            bonusfaktor = df_umlauf["Bonusfaktor"].max() if "Bonusfaktor" in df_umlauf.columns else None
+        
+            # Beispiel für Strecken (sofern du Spalten wie "Strecke Leerfahrt" im df hast!)
+            strecke_leerfahrt = df_umlauf["Strecke Leerfahrt"].sum() if "Strecke Leerfahrt" in df_umlauf.columns else None
+        
+            return {
+                    "Umlaufdauer": umlaufdauer,
+                    "Baggerzeit": baggerzeit,
+                    "Ladungsmasse": ladungsmasse,
+                    "Ladungsvolumen": ladungsvolumen,
+                    "Ladungsdichte": ladungsdichte,
+                    "Abrechnungsvolumen": abrechnungsvolumen,
+                    "Bonusfaktor": bonusfaktor,
+                    "Strecke Leerfahrt": strecke_leerfahrt,
+                    # --- NEU, die aufbereiteten Strings:
+                    "ladungsmasse_disp": ladungsmasse_disp,
+                    "gewicht_leer_disp": gewicht_leer_disp,
+                    "gewicht_voll_disp": gewicht_voll_disp,
+                    "ladungsvolumen_disp": ladungsvolumen_disp,
+                    "volumen_leer_disp": volumen_leer_disp,
+                    "volumen_voll_disp": volumen_voll_disp
+                }
+
+     
+
+        panel_template = """
+        <div style="
+            background:#f4f8fc;
+            border-radius: 16px;
+            padding: 14px 16px 10px 16px;
+            margin-bottom: 1.2rem;
+            min-width: 210px;
+            min-height: 85px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
+            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
+                {value}
+                <span style="font-size:1.2rem; font-weight:500; color:#555;">{unit}</span>
+            </div>
+                <div style="font-size:1.08rem; color:#1769aa; margin-top:2px;">
+                <span style="font-weight:600;">{change_label1}</span> {change_value1}<br>
+                <span style="font-weight:600;">{change_label2}</span> {change_value2}
+            </div>
+        </div>
+        """
+        
+        strecken_panel_template = """
+        <div style="
+            background:#f4f8fc;
+            border-radius: 16px;
+            padding: 14px 16px 10px 16px;
+            margin-bottom: 1.2rem;
+            min-width: 140px;
+            min-height: 65px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
+            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
+                {value}
+                <span style="font-size:1.2rem; font-weight:500; color:#555;"> km</span>
+            </div>
+            <div style="font-size:0.97rem; color:#4e6980; margin-top:4px;">
+                <span style="font-weight:400;">Dauer:</span> <span style="font-weight:500;">{dauer}</span>
+            </div>
+        </div>
+        """
         
         
         def status_bereiche(df, status_liste):
@@ -727,7 +845,8 @@ if uploaded_files:
         
 
         with tab2:
-            # Hilfsfunktion für Kurvennamen
+            
+             # Hilfsfunktion für Kurvennamen
             def get_spaltenname(base, seite):
                 if base.endswith("_") and seite in ["BB", "SB"]:
                     return base + seite
@@ -897,6 +1016,148 @@ if uploaded_files:
             )
             st.plotly_chart(fig, use_container_width=True)
 
+            st.markdown("#### Numerische Auswertung des Umlaufs", unsafe_allow_html=True)
+        
+            if umlauf_auswahl != "Alle" and not umlauf_info_df.empty:
+                row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
+                t_start = pd.to_datetime(row["Start Leerfahrt"])
+                t_ende = pd.to_datetime(row["Ende"])
+                if t_start.tzinfo is None:
+                    t_start = t_start.tz_localize("UTC")
+                if t_ende.tzinfo is None:
+                    t_ende = t_ende.tz_localize("UTC")
+                if df["timestamp"].dt.tz is None:
+                    df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+                
+                df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
+                strecken = berechne_strecken(df_umlauf, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=epsg_code)
+                gesamt = sum([v for v in [strecken["leerfahrt"], strecken["baggern"], strecken["vollfahrt"], strecken["verbringen"]] if v is not None])
+                
+                strecke_leer_disp = f"{strecken['leerfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                strecke_baggern_disp = f"{strecken['baggern']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                strecke_vollfahrt_disp = f"{strecken['vollfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                strecke_verbringen_disp = f"{strecken['verbringen']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                strecke_gesamt_disp = f"{sum([v for v in [strecken['leerfahrt'], strecken['baggern'], strecken['vollfahrt'], strecken['verbringen']] if v is not None]):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        
+            
+                
+                
+                # Jetzt kannst du ab hier wie gehabt fortfahren:
+                strecken = berechne_strecken(df_umlauf, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=epsg_code)
+                kennzahlen = berechne_umlauf_kennzahlen(row, df)
+        
+                st.markdown("""
+                <style>
+                    .big-num {font-size: 2.5rem; font-weight: bold;}
+                    .panel {background: #f4f8fc; border-radius: 16px; padding: 20px; margin-bottom: 1.5rem;}
+                    .caption {font-size: 1rem; color: #555;}
+                    .highlight {font-weight: bold; font-size: 1.2rem; color: #0353a4;}
+                </style>
+                """, unsafe_allow_html=True)
+        
+                # --- Headline Kennzahlen ---
+                # Beispielwerte (ersetze durch echte Werte!)
+                umlaufdauer = kennzahlen.get('Umlaufdauer')
+                baggerzeit = kennzahlen.get('Baggerzeit')
+                ladungsmasse = kennzahlen.get('Ladungsmasse')
+                
+                umlauf_start = row.get('Start Leerfahrt', '-')
+                umlauf_ende = row.get('Ende', '-')
+                bagger_start = row.get('Start Baggern', '-')
+                bagger_ende = row.get('Start Vollfahrt', '-')
+                # Beispiel: Änderung der Ladungsmasse (z.B. erster/letzter Wert im df_umlauf)
+                df_umlauf = df[(df["timestamp"] >= pd.to_datetime(row["Start Leerfahrt"]).tz_localize("UTC")) & 
+                               (df["timestamp"] <= pd.to_datetime(row["Ende"]).tz_localize("UTC"))]
+                ladungsmasse_start = df_umlauf["Ladungsmasse"].iloc[0] if not df_umlauf.empty else None
+                ladungsmasse_end = df_umlauf["Ladungsmasse"].iloc[-1] if not df_umlauf.empty else None
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                col1.markdown(panel_template.format(
+                    caption="Umlaufdauer",
+                    value=f"{umlaufdauer:,.0f}".replace(",", ".") if umlaufdauer is not None else "-",
+                    unit="min",
+                    change_label1="Startzeit:",
+                    change_value1=format_time(row.get("Start Leerfahrt"), zeitzone),
+                    change_label2="Endzeit:",
+                    change_value2=format_time(row.get("Ende"), zeitzone)
+                ), unsafe_allow_html=True)
+                
+                col2.markdown(panel_template.format(
+                    caption="Baggerzeit",
+                    value=f"{baggerzeit:,.0f}".replace(",", ".") if baggerzeit is not None else "-",
+                    unit="min",
+                    change_label1="Startzeit:",
+                    change_value1=format_time(row.get("Start Baggern"), zeitzone),
+                    change_label2="Endzeit:",
+                    change_value2=format_time(row.get("Start Vollfahrt"), zeitzone)
+                ), unsafe_allow_html=True)
+                
+                col3.markdown(panel_template.format(
+                    caption="Ladungsmasse",
+                    value=kennzahlen["ladungsmasse_disp"] + " t",
+                    unit="",
+                    change_label1="leer:",
+                    change_value1=kennzahlen["gewicht_leer_disp"] + " t",
+                    change_label2="voll:",
+                    change_value2=kennzahlen["gewicht_voll_disp"] + " t"
+                ), unsafe_allow_html=True)
+                
+                col4.markdown(panel_template.format(
+                    caption="Ladungsvolumen",
+                    value=kennzahlen["ladungsvolumen_disp"] + " m³",
+                    unit="",
+                    change_label1="leer:",
+                    change_value1=kennzahlen["volumen_leer_disp"] + " m³",
+                    change_label2="voll:",
+                    change_value2=kennzahlen["volumen_voll_disp"] + " m³"
+                ), unsafe_allow_html=True)
+
+
+        
+                st.markdown("---")
+
+                st.markdown("#### Strecken im Umlauf")
+                
+                col_st1, col_st2, col_st3, col_st4, col_st5 = st.columns(5)
+                
+                col_st1.markdown(strecken_panel_template.format(
+                    caption="Leerfahrt",
+                    value=strecke_leer_disp,
+                    dauer=dauer_leerfahrt_disp
+                ), unsafe_allow_html=True)
+                
+                col_st2.markdown(strecken_panel_template.format(
+                    caption="Baggern",
+                    value=strecke_baggern_disp,
+                    dauer=dauer_baggern_disp
+                ), unsafe_allow_html=True)
+                
+                col_st3.markdown(strecken_panel_template.format(
+                    caption="Vollfahrt",
+                    value=strecke_vollfahrt_disp,
+                    dauer=dauer_vollfahrt_disp
+                ), unsafe_allow_html=True)
+                
+                col_st4.markdown(strecken_panel_template.format(
+                    caption="Verbringen",
+                    value=strecke_verbringen_disp,
+                    dauer=dauer_verbringen_disp
+                ), unsafe_allow_html=True)
+                
+                col_st5.markdown(strecken_panel_template.format(
+                    caption="Gesamt",
+                    value=strecke_gesamt_disp,
+                    dauer=dauer_umlauf_disp
+                ), unsafe_allow_html=True)
+
+
+
+
+
+        
+            else:
+                st.info("Bitte einen Umlauf auswählen!")
         
             
 #==============================================================================================================================
@@ -1257,276 +1518,8 @@ if uploaded_files:
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
 
-            
-#==============================================================================================================================
-# Tab 5 - Numerische Auswertung Umlaufdaten
-#==============================================================================================================================
+ 
 
-        def berechne_umlauf_kennzahlen(row, df):
-            t_start = pd.to_datetime(row["Start Leerfahrt"])
-            t_ende = pd.to_datetime(row["Ende"])
-            # Zeitzonen-Anpassung (nur wenn im df vorhanden!)
-            if hasattr(df["timestamp"].iloc[0], "tzinfo") and df["timestamp"].dt.tz is not None:
-                if t_start.tzinfo is None:
-                    t_start = t_start.tz_localize("UTC")
-                if t_ende.tzinfo is None:
-                    t_ende = t_ende.tz_localize("UTC")
-            mask = (df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)
-        
-            # Filter das df auf diesen Umlauf
-            df_umlauf = df[mask]
-        
-            # Berechne die Zeitabschnitte
-            start_baggern = pd.to_datetime(row.get("Start Baggern"))
-            start_vollfahrt = pd.to_datetime(row.get("Start Vollfahrt"))
-            start_verklapp = pd.to_datetime(row.get("Start Verklappen/Pump/Rainbow"))
-            
-            umlaufdauer = (t_ende - t_start).total_seconds() / 60 if t_ende and t_start else None
-            baggerzeit = (start_vollfahrt - start_baggern).total_seconds() / 60 if start_vollfahrt and start_baggern else None
-            
-            # Mengen/Volumina als Maximum im Zeitraum
-            # --- Mengen/Volumina korrekt berechnen: voll - leer während Baggern (Status==2) ---
-            # Sicherstellen, dass die Werte berechnet sind
-            df_baggern = df_umlauf[df_umlauf["Status"] == 2]
-            
-            gewicht_leer = df_baggern["Verdraengung"].iloc[0] if not df_baggern.empty else None
-            gewicht_voll = df_baggern["Verdraengung"].iloc[-1] if not df_baggern.empty else None
-            ladungsmasse = gewicht_voll - gewicht_leer if gewicht_voll is not None and gewicht_leer is not None else None
-            
-            volumen_leer = df_baggern["Ladungsvolumen"].iloc[0] if not df_baggern.empty else None
-            volumen_voll = df_baggern["Ladungsvolumen"].iloc[-1] if not df_baggern.empty else None
-            ladungsvolumen = volumen_voll - volumen_leer if volumen_voll is not None and volumen_leer is not None else None
-            
-            # Formatierte Strings für die Anzeige
-            gewicht_leer_disp = f"{gewicht_leer:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if gewicht_leer is not None else "-"
-            gewicht_voll_disp = f"{gewicht_voll:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if gewicht_voll is not None else "-"
-            volumen_leer_disp = f"{volumen_leer:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if volumen_leer is not None else "-"
-            volumen_voll_disp = f"{volumen_voll:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if volumen_voll is not None else "-"
-            ladungsmasse_disp = f"{ladungsmasse:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if ladungsmasse is not None else "-"
-            ladungsvolumen_disp = f"{ladungsvolumen:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".") if ladungsvolumen is not None else "-"
-
-
-            # Andere KPIs wie gehabt (z. B. max während des Umlaufs, nicht nur während Baggern)
-            ladungsdichte = df_umlauf["Ladungsdichte"].max()
-            abrechnungsvolumen = df_umlauf["Abrechnungsvolumen"].max() if "Abrechnungsvolumen" in df_umlauf.columns else None
-            bonusfaktor = df_umlauf["Bonusfaktor"].max() if "Bonusfaktor" in df_umlauf.columns else None
-        
-            # Beispiel für Strecken (sofern du Spalten wie "Strecke Leerfahrt" im df hast!)
-            strecke_leerfahrt = df_umlauf["Strecke Leerfahrt"].sum() if "Strecke Leerfahrt" in df_umlauf.columns else None
-        
-            return {
-                    "Umlaufdauer": umlaufdauer,
-                    "Baggerzeit": baggerzeit,
-                    "Ladungsmasse": ladungsmasse,
-                    "Ladungsvolumen": ladungsvolumen,
-                    "Ladungsdichte": ladungsdichte,
-                    "Abrechnungsvolumen": abrechnungsvolumen,
-                    "Bonusfaktor": bonusfaktor,
-                    "Strecke Leerfahrt": strecke_leerfahrt,
-                    # --- NEU, die aufbereiteten Strings:
-                    "ladungsmasse_disp": ladungsmasse_disp,
-                    "gewicht_leer_disp": gewicht_leer_disp,
-                    "gewicht_voll_disp": gewicht_voll_disp,
-                    "ladungsvolumen_disp": ladungsvolumen_disp,
-                    "volumen_leer_disp": volumen_leer_disp,
-                    "volumen_voll_disp": volumen_voll_disp
-                }
-
-     
-
-        panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px 10px 16px;
-            margin-bottom: 1.2rem;
-            min-width: 210px;
-            min-height: 85px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
-            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
-                {value}
-                <span style="font-size:1.2rem; font-weight:500; color:#555;">{unit}</span>
-            </div>
-                <div style="font-size:1.08rem; color:#1769aa; margin-top:2px;">
-                <span style="font-weight:600;">{change_label1}</span> {change_value1}<br>
-                <span style="font-weight:600;">{change_label2}</span> {change_value2}
-            </div>
-        </div>
-        """
-        
-        strecken_panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px 10px 16px;
-            margin-bottom: 1.2rem;
-            min-width: 140px;
-            min-height: 65px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
-            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
-                {value}
-                <span style="font-size:1.2rem; font-weight:500; color:#555;"> km</span>
-            </div>
-            <div style="font-size:0.97rem; color:#4e6980; margin-top:4px;">
-                <span style="font-weight:400;">Dauer:</span> <span style="font-weight:500;">{dauer}</span>
-            </div>
-        </div>
-        """
-
-        
-
-
-        with tab5:
-            st.markdown("#### Numerische Auswertung des Umlaufs", unsafe_allow_html=True)
-        
-            if umlauf_auswahl != "Alle" and not umlauf_info_df.empty:
-                row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
-                t_start = pd.to_datetime(row["Start Leerfahrt"])
-                t_ende = pd.to_datetime(row["Ende"])
-                if t_start.tzinfo is None:
-                    t_start = t_start.tz_localize("UTC")
-                if t_ende.tzinfo is None:
-                    t_ende = t_ende.tz_localize("UTC")
-                if df["timestamp"].dt.tz is None:
-                    df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
-                
-                df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-                strecken = berechne_strecken(df_umlauf, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=epsg_code)
-                gesamt = sum([v for v in [strecken["leerfahrt"], strecken["baggern"], strecken["vollfahrt"], strecken["verbringen"]] if v is not None])
-                
-                strecke_leer_disp = f"{strecken['leerfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_baggern_disp = f"{strecken['baggern']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_vollfahrt_disp = f"{strecken['vollfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_verbringen_disp = f"{strecken['verbringen']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_gesamt_disp = f"{sum([v for v in [strecken['leerfahrt'], strecken['baggern'], strecken['vollfahrt'], strecken['verbringen']] if v is not None]):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                        
-            
-                
-                
-                # Jetzt kannst du ab hier wie gehabt fortfahren:
-                strecken = berechne_strecken(df_umlauf, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=epsg_code)
-                kennzahlen = berechne_umlauf_kennzahlen(row, df)
-        
-                st.markdown("""
-                <style>
-                    .big-num {font-size: 2.5rem; font-weight: bold;}
-                    .panel {background: #f4f8fc; border-radius: 16px; padding: 20px; margin-bottom: 1.5rem;}
-                    .caption {font-size: 1rem; color: #555;}
-                    .highlight {font-weight: bold; font-size: 1.2rem; color: #0353a4;}
-                </style>
-                """, unsafe_allow_html=True)
-        
-                # --- Headline Kennzahlen ---
-                # Beispielwerte (ersetze durch echte Werte!)
-                umlaufdauer = kennzahlen.get('Umlaufdauer')
-                baggerzeit = kennzahlen.get('Baggerzeit')
-                ladungsmasse = kennzahlen.get('Ladungsmasse')
-                
-                umlauf_start = row.get('Start Leerfahrt', '-')
-                umlauf_ende = row.get('Ende', '-')
-                bagger_start = row.get('Start Baggern', '-')
-                bagger_ende = row.get('Start Vollfahrt', '-')
-                # Beispiel: Änderung der Ladungsmasse (z.B. erster/letzter Wert im df_umlauf)
-                df_umlauf = df[(df["timestamp"] >= pd.to_datetime(row["Start Leerfahrt"]).tz_localize("UTC")) & 
-                               (df["timestamp"] <= pd.to_datetime(row["Ende"]).tz_localize("UTC"))]
-                ladungsmasse_start = df_umlauf["Ladungsmasse"].iloc[0] if not df_umlauf.empty else None
-                ladungsmasse_end = df_umlauf["Ladungsmasse"].iloc[-1] if not df_umlauf.empty else None
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                col1.markdown(panel_template.format(
-                    caption="Umlaufdauer",
-                    value=f"{umlaufdauer:,.0f}".replace(",", ".") if umlaufdauer is not None else "-",
-                    unit="min",
-                    change_label1="Startzeit:",
-                    change_value1=format_time(row.get("Start Leerfahrt"), zeitzone),
-                    change_label2="Endzeit:",
-                    change_value2=format_time(row.get("Ende"), zeitzone)
-                ), unsafe_allow_html=True)
-                
-                col2.markdown(panel_template.format(
-                    caption="Baggerzeit",
-                    value=f"{baggerzeit:,.0f}".replace(",", ".") if baggerzeit is not None else "-",
-                    unit="min",
-                    change_label1="Startzeit:",
-                    change_value1=format_time(row.get("Start Baggern"), zeitzone),
-                    change_label2="Endzeit:",
-                    change_value2=format_time(row.get("Start Vollfahrt"), zeitzone)
-                ), unsafe_allow_html=True)
-                
-                col3.markdown(panel_template.format(
-                    caption="Ladungsmasse",
-                    value=kennzahlen["ladungsmasse_disp"] + " t",
-                    unit="",
-                    change_label1="leer:",
-                    change_value1=kennzahlen["gewicht_leer_disp"] + " t",
-                    change_label2="voll:",
-                    change_value2=kennzahlen["gewicht_voll_disp"] + " t"
-                ), unsafe_allow_html=True)
-                
-                col4.markdown(panel_template.format(
-                    caption="Ladungsvolumen",
-                    value=kennzahlen["ladungsvolumen_disp"] + " m³",
-                    unit="",
-                    change_label1="leer:",
-                    change_value1=kennzahlen["volumen_leer_disp"] + " m³",
-                    change_label2="voll:",
-                    change_value2=kennzahlen["volumen_voll_disp"] + " m³"
-                ), unsafe_allow_html=True)
-
-
-        
-                st.markdown("---")
-
-                st.markdown("#### Strecken im Umlauf")
-                
-                col_st1, col_st2, col_st3, col_st4, col_st5 = st.columns(5)
-                
-                col_st1.markdown(strecken_panel_template.format(
-                    caption="Leerfahrt",
-                    value=strecke_leer_disp,
-                    dauer=dauer_leerfahrt_disp
-                ), unsafe_allow_html=True)
-                
-                col_st2.markdown(strecken_panel_template.format(
-                    caption="Baggern",
-                    value=strecke_baggern_disp,
-                    dauer=dauer_baggern_disp
-                ), unsafe_allow_html=True)
-                
-                col_st3.markdown(strecken_panel_template.format(
-                    caption="Vollfahrt",
-                    value=strecke_vollfahrt_disp,
-                    dauer=dauer_vollfahrt_disp
-                ), unsafe_allow_html=True)
-                
-                col_st4.markdown(strecken_panel_template.format(
-                    caption="Verbringen",
-                    value=strecke_verbringen_disp,
-                    dauer=dauer_verbringen_disp
-                ), unsafe_allow_html=True)
-                
-                col_st5.markdown(strecken_panel_template.format(
-                    caption="Gesamt",
-                    value=strecke_gesamt_disp,
-                    dauer=dauer_umlauf_disp
-                ), unsafe_allow_html=True)
-
-
-
-
-
-        
-            else:
-                st.info("Bitte einen Umlauf auswählen!")
 
 
 
