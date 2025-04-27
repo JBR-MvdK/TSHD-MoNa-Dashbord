@@ -21,6 +21,9 @@ from modul_koordinatenerkennung import erkenne_koordinatensystem
 #=== XML-Datei der Baggerfeldgrenzen (LandXML) parsen --> modul_baggerfelder_xml_import.py ====================================
 from modul_baggerfelder_xml_import import parse_baggerfelder
 
+#=== Solltiefen berechnen --> modul_solltiefe_tshd.py ====================================
+from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
+
 
 #=== Zeitliche Lücken erkennen und segmentieren (für Linienunterbrechungen) ===================================================
 def split_by_gap(df, max_gap_minutes=2):
@@ -51,51 +54,6 @@ def plot_x(df, mask, zeitzone):
         return df.loc[mask, col].dt.tz_convert("Europe/Berlin")
     return df.loc[mask, col]
 
-
-#=========================================================================================
-
-def berechne_solltiefe_fuer_df(df, baggerfelder, seite, toleranz_oben=1.0, toleranz_unten=0.5):
-    if not baggerfelder or "RW_Schiff" not in df or "HW_Schiff" not in df:
-        df["Solltiefe_Aktuell"] = None
-        return df
-
-    # Koordinaten im WGS84 berechnen (wie im Map-Plot!)
-    from pyproj import Transformer
-    transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
-    
-    # Seite wählen: BB, SB, BB+SB (hier einfach: zuerst BB, dann SB – wie bei Map)
-    rw_col = "RW_BB" if seite in ["BB", "BB+SB"] and "RW_BB" in df else "RW_SB"
-    hw_col = "HW_BB" if seite in ["BB", "BB+SB"] and "HW_BB" in df else "HW_SB"
-
-    # Wenn Spalten nicht vorhanden: auf RW_Schiff/HW_Schiff zurückfallen
-    if rw_col not in df or hw_col not in df:
-        rw_col = "RW_Schiff"
-        hw_col = "HW_Schiff"
-
-    solltiefen = []
-    for idx, row in df.iterrows():
-        try:
-            x, y = row[rw_col], row[hw_col]
-            lon, lat = transformer.transform(x, y)
-            punkt = Point(lon, lat)
-            matched = False
-            for feld in baggerfelder:
-                if feld["polygon"].contains(punkt):
-                    solltiefen.append(feld["solltiefe"])
-                    matched = True
-                    break
-            if not matched:
-                solltiefen.append(None)
-        except Exception:
-            solltiefen.append(None)
-    df["Solltiefe_Aktuell"] = solltiefen
-
-    
-    if "Solltiefe_Aktuell" in df.columns:
-        df["Solltiefe_Oben"] = df["Solltiefe_Aktuell"] + toleranz_oben
-        df["Solltiefe_Unten"] = df["Solltiefe_Aktuell"] - toleranz_unten
-        
-    return df
 
 #=== START der Routine  =======================================================================================================
 
@@ -158,20 +116,23 @@ with st.sidebar.expander("🚢 Berechnungs-Setup"):
         step=0.01,
         format="%.2f"
     )
+    solltiefe_slider = st.number_input(
+        "**Solltiefe (m)** \n_Nur falls keine XML mit gültiger Tiefe geladen wird_",  # \n für Zeilenumbruch
+        min_value=-30.0,
+        max_value=0.0,
+        value=0.0,
+        step=0.1,
+        format="%.2f"
+    )
+
     toleranz_oben = st.slider(
-        "Obere Toleranz (m)",
-        min_value=0.0,
-        max_value=2.0,
-        value=0.5,
-        step=0.1
+        "Obere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
     )
     toleranz_unten = st.slider(
-        "Untere Toleranz (m)",
-        min_value=0.0,
-        max_value=2.0,
-        value=0.5,
-        step=0.1
+        "Untere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
     )
+
+
     
 # === MoNa Daten einlesen =====================================================================================================
 if uploaded_files:
@@ -189,8 +150,7 @@ if uploaded_files:
                 df, st=koordsys_status, sidebar=st.sidebar
             )
         
-
-        
+     
         # ... (Datei-Upload, Parsen, df einlesen usw.)
         
         schiffe = df["Schiffsname"].dropna().unique()
@@ -336,7 +296,50 @@ if uploaded_files:
             except Exception as e:
                 xml_status.error(f"Fehler beim Verarbeiten der XML-Dateien: {e}")        
         
-        df = berechne_solltiefe_fuer_df(df, baggerfelder, seite, toleranz_oben, toleranz_unten)
+        df = berechne_solltiefe_fuer_df(
+            df, baggerfelder, seite, epsg_code, toleranz_oben, toleranz_unten, solltiefe_slider
+        )
+
+        # Nach df = berechne_solltiefe_fuer_df(...)
+        if "Solltiefe_Aktuell" in df.columns and df["Solltiefe_Aktuell"].notnull().any():
+            # Alle gültigen Werte extrahieren (ohne NaN)
+            gueltige = df["Solltiefe_Aktuell"].dropna()
+            # Schauen, ob sie alle gleich sind (dann war's vermutlich Slider oder XML mit konstantem Wert)
+            if (gueltige == gueltige.iloc[0]).all():
+                solltiefe_wert = gueltige.iloc[0]
+            else:
+                solltiefe_wert = "variabel"
+        else:
+            solltiefe_wert = None
+        
+        # Bestimme Quelle der Solltiefe
+        if solltiefe_wert is None:
+            solltiefe_herkunft = "nicht definiert"
+        elif solltiefe_wert == solltiefe_slider:
+            solltiefe_herkunft = "manuelle Eingabe"
+        elif solltiefe_wert == "variabel":
+            solltiefe_herkunft = "aus XML - mehrere Werte"
+        else:
+            solltiefe_herkunft = "aus XML-Datei übernommen"
+        
+        # Anzeige Solltiefe hübsch machen (nur Zahl formatieren, sonst einfach weitergeben)
+        if isinstance(solltiefe_wert, (int, float)):
+            anzeige_solltiefe = f"{solltiefe_wert:.2f}"
+            anzeige_m = " m"
+        elif solltiefe_wert == "variabel":
+            anzeige_solltiefe = "variabel"
+            anzeige_m = ""
+        else:
+            anzeige_solltiefe = " "
+            anzeige_m = ""
+        
+        meta_info.markdown(f"""
+        {schiffsname_text}  
+        **Zeitraum:** {df["timestamp"].min().strftime('%d.%m.%Y %H:%M:%S')} – {df["timestamp"].max().strftime('%d.%m.%Y %H:%M:%S')} UTC  
+        **Baggerseite:** {seite}  
+        **Solltiefe:** {anzeige_solltiefe}{anzeige_m} ({solltiefe_herkunft})
+        """)
+
 
 
 #=== Umlaufinformationen ======================================================================================================
@@ -459,11 +462,12 @@ if uploaded_files:
         
 
         # === Tabs definieren ===
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🗺️ Karte",
             "📈 Prozess",
             "📉 Tiefe",
-            "📋 Umläufe"
+            "📋 Umläufe",
+            "📋 Auswertung"
         ])
 #==============================================================================================================================
 # Tab - Übersichtskarten 
@@ -1233,6 +1237,83 @@ if uploaded_files:
 
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
+
+            
+#==============================================================================================================================
+# Tab 5 - Numerische Auswertung Umlaufdaten
+#==============================================================================================================================
+
+
+        with tab5:
+            st.markdown("## ✨ Numerische Umlauf-Auswertung")
+            st.markdown(
+                """
+                <style>
+                .big-val { font-size: 2rem; font-weight: bold; }
+                .main-col { background: #f7fafc; border-radius: 12px; padding: 1rem 2rem; margin-bottom: 2rem; }
+                .highlight { background: #eef6ff; border-radius: 10px; padding: 0.5rem 1rem; }
+                .section-head { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; color: #186A3B; font-weight: bold;}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+        
+            if umlauf_auswahl != "Alle" and not umlauf_info_df.empty:
+                row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
+        
+                def fmt(v, nachkomma=2, einheit=None):
+                    if pd.isnull(v) or v in ["-", None, ""]:
+                        return "-"
+                    try:
+                        val = float(v)
+                        num = f"{val:,.{nachkomma}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        return f"{num}{(' ' + einheit) if einheit else ''}"
+                    except Exception:
+                        return str(v)
+        
+                # Hauptzeiten als große Werte (in 3 Spalten)
+                col1, col2, col3 = st.columns(3)
+                col1.markdown(f"<div class='main-col'><div class='big-val'>{fmt(row.get('Umlaufdauer', '-'), 1)} min</div><div>Umlaufdauer</div></div>", unsafe_allow_html=True)
+                col2.markdown(f"<div class='main-col'><div class='big-val'>{fmt(row.get('Baggerzeit', '-'), 1)} min</div><div>Baggerzeit</div></div>", unsafe_allow_html=True)
+                col3.markdown(f"<div class='main-col'><div class='big-val'>{fmt(row.get('Ladungsmasse', '-'), 2, 't')}</div><div>Ladungsmasse</div></div>", unsafe_allow_html=True)
+        
+                # Zeiten: Start, Ende, Phasen
+                st.markdown("<div class='section-head'>Zeiten</div>", unsafe_allow_html=True)
+                zeit_col1, zeit_col2 = st.columns(2)
+                zeit_col1.markdown(f"<div class='highlight'>🟢 Beginn: <b>{row.get('Start Leerfahrt', '-')}</b></div>", unsafe_allow_html=True)
+                zeit_col1.markdown(f"<div class='highlight'>⛏️ Baggerstart: <b>{row.get('Start Baggern', '-')}</b></div>", unsafe_allow_html=True)
+                zeit_col1.markdown(f"<div class='highlight'>🚢 Entladestart: <b>{row.get('Start Entladen', '-')}</b></div>", unsafe_allow_html=True)
+                zeit_col2.markdown(f"<div class='highlight'>🔴 Ende: <b>{row.get('Ende', '-')}</b></div>", unsafe_allow_html=True)
+                zeit_col2.markdown(f"<div class='highlight'>⛏️ Baggerende: <b>{row.get('Ende Baggern', '-')}</b></div>", unsafe_allow_html=True)
+                zeit_col2.markdown(f"<div class='highlight'>🚢 Entladeende: <b>{row.get('Ende Entladen', '-')}</b></div>", unsafe_allow_html=True)
+        
+                # Mengen & Volumina
+                st.markdown("<div class='section-head'>Mengen & Volumina</div>", unsafe_allow_html=True)
+                menge_col1, menge_col2, menge_col3 = st.columns(3)
+                menge_col1.metric("Ladungsvolumen [m³]", fmt(row.get("Ladungsvolumen", "-"), 0))
+                menge_col2.metric("Ladungsdichte [t/m³]", fmt(row.get("Ladungsdichte", "-"), 3))
+                menge_col3.metric("Abrechnungsvolumen", fmt(row.get("Abrechnungsvolumen", "-"), 0, "m³"))
+        
+                # Strecken
+                st.markdown("<div class='section-head'>Strecken</div>", unsafe_allow_html=True)
+                strecke_col1, strecke_col2 = st.columns(2)
+                strecke_col1.metric("Leerfahrt [km]", fmt(row.get("Strecke Leerfahrt", "-"), 2))
+                strecke_col1.metric("Baggern [km]", fmt(row.get("Strecke Baggern", "-"), 2))
+                strecke_col2.metric("Vollfahrt [km]", fmt(row.get("Strecke Vollfahrt", "-"), 2))
+                strecke_col2.metric("Entladung [km]", fmt(row.get("Strecke Entladen", "-"), 2))
+        
+                # Bonus & Zusatzinfos
+                st.markdown("<div class='section-head'>Weitere Kennzahlen</div>", unsafe_allow_html=True)
+                col_bonus, col_abrechnung = st.columns(2)
+                col_bonus.metric("Bonusfaktor", fmt(row.get("Bonusfaktor", "-"), 2))
+                col_abrechnung.metric("Verbleib", fmt(row.get("Verbleib", "-"), 2, "t"))
+            else:
+                st.info("Bitte einen Umlauf auswählen!")
+
+
+
+
+
 
 
 #=====================================================================================
