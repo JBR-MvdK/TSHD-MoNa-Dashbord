@@ -41,7 +41,7 @@ from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 # Streckenberechnung je nach Status (Leerfahrt, Baggern usw.)
 from modul_strecken import berechne_strecken
 
-# Berechnung der Kennzahlen für jeden Umlauf (Verdrängung, Volumen usw.)
+# Berechnung der Kennzahlen für jeden Umlauf (Verdraengung, Volumen usw.)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
 #==============================================================================================================================
@@ -481,7 +481,7 @@ if uploaded_files:
             zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
             if not zeile.empty:
                 row = zeile.iloc[0]  # Erste (und einzige) Zeile herausziehen
-                # Kennzahlen (z. B. Mengen, Zeiten, Verdrängung etc.) berechnen
+                # Kennzahlen (z. B. Mengen, Zeiten, Verdraengung etc.) berechnen
                 kennzahlen = berechne_umlauf_kennzahlen(row, df)
    
             
@@ -1004,7 +1004,7 @@ if uploaded_files:
                 {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#6699CC", "sichtbar": False},
                 {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#82A07A", "sichtbar": False, "nur_baggern": True},
                 {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#8C8C8C", "sichtbar": True},
-                {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True},
+                {"spaltenname": "Verdraengung", "label": "Verdraengung [t]", "farbe": "#A67C52", "sichtbar": True},
                 {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#A1584F", "sichtbar": False},
                 {"spaltenname": "Ladungsdichte", "label": "Ladungsdichte [t/m³]", "farbe": "#627D98", "sichtbar": False},
                 {"spaltenname": "Feststoffkonzentration", "label": "Feststoffkonzentration [-]", "farbe": "#BCA898", "sichtbar": False},
@@ -1140,11 +1140,11 @@ if uploaded_files:
             )
             
  
-            # 🔵 Vertikale Linien für Start-/Endzeitpunkte von Verdrängung und Volumen
+            # 🔵 Vertikale Linien für Start-/Endzeitpunkte von Verdraengung und Volumen
 
             for key, color, label in [
-                ("verdraengung_leer_ts", "blue", "Verdrängung Start"),
-                ("verdraengung_voll_ts", "blue", "Verdrängung Ende"),
+                ("verdraengung_leer_ts", "blue", "Verdraengung Start"),
+                ("verdraengung_voll_ts", "blue", "Verdraengung Ende"),
                 ("volumen_leer_ts", "orange", "Volumen Start"),
                 ("volumen_voll_ts", "orange", "Volumen Ende"),
             ]:
@@ -1590,17 +1590,17 @@ if uploaded_files:
                 </style>
                 """, unsafe_allow_html=True)
         
-                # --- Headline-Kennzahlen (Dauer, Baggerzeit, Verdrängungsänderung, Volumen) anzeigen ---
+                # --- Headline-Kennzahlen (Dauer, Baggerzeit, Verdraengungsänderung, Volumen) anzeigen ---
                 umlaufdauer = kennzahlen.get('Umlaufdauer')
                 baggerzeit = kennzahlen.get('Baggerzeit')
-                delta_verdraengung = kennzahlen.get('Delta Verdrängung')  # <- neue saubere Kennzahl
+                delta_verdraengung = kennzahlen.get('Delta Verdraengung')  # <- neue saubere Kennzahl
                 
                 umlauf_start = row.get('Start Leerfahrt', '-')
                 umlauf_ende = row.get('Ende', '-')
                 bagger_start = row.get('Start Baggern', '-')
                 bagger_ende = row.get('Start Vollfahrt', '-')
                 
-                # Beispiel: Änderung der Verdrängung während des Umlaufs
+                # Beispiel: Änderung der Verdraengung während des Umlaufs
                 df_umlauf = df[(df["timestamp"] >= pd.to_datetime(row["Start Leerfahrt"]).tz_localize("UTC")) &
                                (df["timestamp"] <= pd.to_datetime(row["Ende"]).tz_localize("UTC"))]
                 
@@ -1640,7 +1640,7 @@ if uploaded_files:
                     ), unsafe_allow_html=True)
                 
                     col3.markdown(panel_template.format(
-                        caption="Verdrängung",
+                        caption="Verdraengung",
                         value=kennzahlen.get("delta_verdraengung_disp", "-") + " t",
                         unit="",
                         change_label1="leer:",
@@ -1719,47 +1719,6 @@ if uploaded_files:
                     value=strecke_gesamt_disp,
                     dauer=dauer_umlauf_disp
                 ), unsafe_allow_html=True)
-
-
-
-#------ DEBUG Tabelle
-            
-           
-            # Debug-Tabelle bauen
-            # 🔍 Debug-Tabelle: Übersicht Start-/Endwerte
-            
-            # Sicheres Zeitformat für Zeitzonenanzeige
-            def sichere_zeit(ts):
-                if ts is None or pd.isnull(ts):
-                    return "-"
-                return format_time(ts, zeitzone)
-            
-            # Debug-Tabelle bauen mit zeitzonenabhängigen Zeitangaben
-            werte_tabelle = pd.DataFrame([
-                {
-                    "Parameter": "Verdrängung Start",
-                    "Wert": f"{kennzahlen['verdraengung_leer']:.2f}" if kennzahlen.get('verdraengung_leer') is not None else "-",
-                    "Zeitstempel": sichere_zeit(kennzahlen.get("verdraengung_leer_ts"))
-                },
-                {
-                    "Parameter": "Verdrängung Ende",
-                    "Wert": f"{kennzahlen['verdraengung_voll']:.2f}" if kennzahlen.get('verdraengung_voll') is not None else "-",
-                    "Zeitstempel": sichere_zeit(kennzahlen.get("verdraengung_voll_ts"))
-                },
-                {
-                    "Parameter": "Ladungsvolumen Start",
-                    "Wert": f"{kennzahlen['volumen_leer']:.2f}" if kennzahlen.get('volumen_leer') is not None else "-",
-                    "Zeitstempel": sichere_zeit(kennzahlen.get("volumen_leer_ts"))
-                },
-                {
-                    "Parameter": "Ladungsvolumen Ende",
-                    "Wert": f"{kennzahlen['volumen_voll']:.2f}" if kennzahlen.get('volumen_voll') is not None else "-",
-                    "Zeitstempel": sichere_zeit(kennzahlen.get("volumen_voll_ts"))
-                }
-            ])
-            
-            st.markdown("### 📋 Übersicht Start-/Endwerte (Debug)")
-            st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
 
 #=====================================================================================
     except Exception as e:

@@ -29,7 +29,7 @@ def berechne_umlauf_kennzahlen(row, df):
     # Status == 2 → Baggern
     df_baggern = df_umlauf[df_umlauf["Status"] == 2]
 
-    # Verdrängung und Volumen bestimmen
+    # Verdraengung und Volumen bestimmen
     verdraengung_leer, verdraengung_leer_ts, verdraengung_voll, verdraengung_voll_ts = berechne_delta_werte(df_baggern, "Verdraengung")
     volumen_leer, volumen_leer_ts, volumen_voll, volumen_voll_ts = berechne_delta_werte(df_baggern, "Ladungsvolumen")
 
@@ -64,7 +64,7 @@ def berechne_umlauf_kennzahlen(row, df):
             (row.get("Start Vollfahrt") - row.get("Start Baggern")).total_seconds() / 60
             if row.get("Start Vollfahrt") and row.get("Start Baggern") else None
         ),
-        "Verdrängung": delta_verdraengung,
+        "Verdraengung": delta_verdraengung,
         "Ladungsvolumen": ladungsvolumen,
         "Ladungsdichte": ladungsdichte,
         "Abrechnungsvolumen": abrechnungsvolumen,
