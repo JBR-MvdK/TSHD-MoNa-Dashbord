@@ -1,0 +1,212 @@
+{
+  "TSHD ANKE": {
+    "Tiefgang_vorne": {
+      "min": null,
+      "max": null
+    },
+    "Tiefgang_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Verdraengung": {
+      "min": null,
+      "max": null
+    },
+    "Tiefe_Kopf_BB": {
+      "min": null,
+      "max": null
+    },
+    "Tiefe_Kopf_SB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischdichte_BB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischdichte_SB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischgeschwindigkeit_BB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischgeschwindigkeit_SB": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_vorne": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_SB_vorne": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_mitte": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_SB_mitte": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_SB_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Masse_leeres_Schiff": {
+      "min": null,
+      "max": null
+    },
+    "Ladungsvolumen": {
+      "min": null,
+      "max": null
+    },
+    "Druck_vor_Baggerpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_vor_Baggerpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_hinter_Baggerpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_hinter_Baggerpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_Druckwasserpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_Druckwasserpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "StartEndStrategie": {
+      "Verdraengung": {
+        "Start": "nach_456_auf_1",
+        "Ende": "max_in_1min_um_2_3"
+      },
+      "Ladungsvolumen": {
+        "Start": "null",
+        "Ende": "2min_nach_2_3"
+      }
+    }  
+  
+ 
+  },
+  "TSHD IJSSELDELTA": {
+    "Tiefgang_vorne": {
+      "min": null,
+      "max": null
+    },
+    "Tiefgang_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Verdraengung": {
+      "min": null,
+      "max": null
+    },
+    "Tiefe_Kopf_BB": {
+      "min": null,
+      "max": null
+    },
+    "Tiefe_Kopf_SB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischdichte_BB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischdichte_SB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischgeschwindigkeit_BB": {
+      "min": null,
+      "max": null
+    },
+    "Gemischgeschwindigkeit_SB": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_vorne": {
+      "min": 0.0,
+      "max": 9.0
+    },
+    "Fuellstand_SB_vorne": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_mitte": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_SB_mitte": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_SB_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Fuellstand_BB_hinten": {
+      "min": null,
+      "max": null
+    },
+    "Masse_leeres_Schiff": {
+      "min": null,
+      "max": null
+    },
+    "Ladungsvolumen": {
+      "min": null,
+      "max": null
+    },
+    "Druck_vor_Baggerpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_vor_Baggerpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_hinter_Baggerpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_hinter_Baggerpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_Druckwasserpumpe_BB": {
+      "min": null,
+      "max": null
+    },
+    "Druck_Druckwasserpumpe_SB": {
+      "min": null,
+      "max": null
+    },
+    "StartEndStrategie": {
+      "Verdraengung": {
+        "Start": "",
+        "Ende": ""
+      },
+      "Ladungsvolumen": {
+        "Start": "",
+        "Ende": ""
+      }
+    }
+  }
+}
