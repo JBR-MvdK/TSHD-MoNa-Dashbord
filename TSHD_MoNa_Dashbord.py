@@ -3,205 +3,64 @@
 #==============================================================================================================================
 
 # === 🔧 Basis-Module ===
-import os              # Für Dateipfade, Dateioperationen, Existenzprüfungen etc.
-import json            # Zum Lesen und Schreiben von JSON-Dateien (z. B. Konfiguration)
-import pandas as pd    # Pandas ist essenziell für DataFrame-basierte Datenverarbeitung
-import numpy as np     # Numpy für numerische Berechnungen und Masken
-import pytz            # Zeitzonenmanagement (z. B. für Umrechnungen in UTC)
-import traceback
+import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz, etc.)
+import json            # Einlesen und Schreiben von JSON-Dateien (z. B. Konfigurationen oder Schiffsdaten)
+import pandas as pd    # Zentrale Bibliothek für tabellarische Datenverarbeitung
+import numpy as np     # Für numerische Operationen (z. B. Mittelwert, Maskierung, NaN-Erkennung)
+import pytz            # Zeitzonenmanagement – für korrekte Darstellung und Umrechnung von Zeitstempeln
+import traceback       # Fehlerverfolgung und Debugging bei komplexen Ausnahmen
 
 # === 📊 Visualisierung & UI ===
-import streamlit as st               # Streamlit steuert die gesamte Benutzeroberfläche
-import plotly.graph_objects as go    # Für interaktive Diagramme (z. B. Zeitreihen oder Scatterplots)
+import streamlit as st               # Streamlit steuert die gesamte Benutzeroberfläche des Dashboards
+import plotly.graph_objects as go    # Für interaktive Visualisierungen (z. B. Zeitreihen von Pegel, Dichte etc.)
 
 # === 🌍 Geodaten & Geometrie ===
-from shapely.geometry import Point   # Wird z. B. für Geo-Punkte zur Feldprüfung genutzt
+from shapely.geometry import Point   # Zur Erstellung und Prüfung geometrischer Punkte (z. B. „liegt in Polygon?“)
 
 # === 🧩 Eigene Module (Funktionsbausteine) ===
-# Diese Module hast du selbst geschrieben und in separate .py-Dateien ausgelagert.
+# Diese modularen Python-Dateien bündeln thematisch zusammengehörige Funktionen und machen den Code wartbar.
 
-# Datenimport & TDS-Berechnung (z. B. Dichten, Konzentrationen)
+# 🟡 MoNa-Datenimport und Berechnung von TDS-Parametern (z. B. Dichte, Volumen, Konzentration)
 from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 
-# Umlauf-Erkennung (Zeitlogik, Segmentierung)
+# 🟦 Zeitbasierte Segmentierung der Fahrt in einzelne Umläufe
 from modul_umlaeufe import nummeriere_umlaeufe, extrahiere_umlauf_startzeiten
 
-# Baggerseite (Backbord / Steuerbord) automatisch erkennen
+# ⚓ Automatische Erkennung der aktiven Baggerseite (Backbord/Steuerbord)
 from modul_baggerseite import erkenne_baggerseite
 
-# Koordinatensystem automatisch erkennen (z. B. UTM, Gauß-Krüger)
+# 🌐 Koordinatensystem-Analyse (z. B. zur korrekten Geo-Referenzierung bei EPSG-Codes)
 from modul_koordinatenerkennung import erkenne_koordinatensystem
 
-# XML-Import für Baggerfelder
+# 📥 Import der Baggerfeld-Definitionen (Polygone mit Solltiefe) aus XML
 from modul_baggerfelder_xml_import import parse_baggerfelder
 
-# Berechnung der Solltiefe anhand der Felder oder Eingabewerte
+# 📏 Berechnung der Solltiefe je Punkt im Track – abhängig von Polygon oder Defaultwert
 from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 
-# Streckenberechnung je nach Status (Leerfahrt, Baggern usw.)
+# 🚢 Streckenberechnung für alle Fahrtabschnitte (Leerfahrt, Baggern, Verbringen etc.)
 from modul_strecken import berechne_strecken
 
-# Berechnung der Kennzahlen für jeden Umlauf (Verdraengung, Volumen usw.)
+# 📊 Kennzahlenberechnung pro Umlauf (z. B. Verdrängung, Ladevolumen, Baggerzeit)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
+# 🎯 Start-End-Strategien zur Extraktion spezifischer Zeitpunkte (z. B. min/max in Zeitfenstern)
 from modul_startend_strategie import berechne_start_endwerte
 
-#==============================================================================================================================
-# 🔵 Hilfsfunktionen
-#==============================================================================================================================
+# 🧰 Sammlung häufig genutzter Hilfsfunktionen (z. B. Zeitformatierung, Einheitenanzeige)
+from modul_hilfsfunktionen import (
+    split_by_gap, convert_timestamp, format_time, plot_x,
+    lade_schiffsparameter, pruefe_werte_gegen_schiffsparameter, format_de,
+    to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_dauer,
+    sichere_dauer, sichere_zeit, get_spaltenname
+)
 
-# === 📋 DataFrame-Hilfsfunktionen ===
+# 🪟 Streamlit-UI-Komponenten zur Anzeige von Panels (Kennzahlen, Strecken, Statuszeiten etc.)
+from modul_ui_panels import zeige_statuszeiten_panels, zeige_baggerwerte_panels, zeige_strecken_panels, zeige_bagger_und_verbringfelder
 
-def split_by_gap(df, max_gap_minutes=2):
-    """
-    Teilt einen DataFrame in Segmente auf, wenn Lücken zwischen Zeitstempeln größer als max_gap_minutes sind.
-    """
-    df = df.sort_values(by="timestamp")
-    df["gap"] = df["timestamp"].diff().dt.total_seconds() > (max_gap_minutes * 60)
-    df["segment"] = df["gap"].cumsum()
-    return df
+# 📈 Integration einer Prozessgrafik pro Umlauf (z. B. Pegelverlauf, Dichteverlauf)
+from modul_prozessgrafik import zeige_prozessgrafik_tab
 
-# === 🕒 Zeit- und Zeitzonenfunktionen ===
-
-def convert_timestamp(ts, zeitzone):
-    """
-    Konvertiert einen Zeitstempel in die angegebene Zeitzone (UTC oder Europe/Berlin).
-    """
-    if ts is None or pd.isnull(ts):
-        return None
-    if zeitzone == "UTC":
-        return ts.tz_localize("UTC") if ts.tzinfo is None else ts.astimezone(pytz.UTC)
-    elif zeitzone == "Lokal (Europe/Berlin)":
-        return ts.tz_localize("UTC").astimezone(pytz.timezone("Europe/Berlin")) if ts.tzinfo is None else ts.astimezone(pytz.timezone("Europe/Berlin"))
-    return ts
-
-def format_time(ts, zeitzone):
-    """
-    Formatiert einen Zeitstempel (je nach Zeitzone) als lesbaren String.
-    """
-    ts_conv = convert_timestamp(ts, zeitzone)
-    return "-" if ts_conv is None or pd.isnull(ts_conv) else ts_conv.strftime("%d.%m.%Y %H:%M:%S")
-
-def plot_x(df, mask, zeitzone):
-    """
-    Gibt Zeitstempel-Spalte (timestamp) mit korrekt angepasster Zeitzone zurück.
-    """
-    col = "timestamp"
-    if zeitzone == "Lokal (Europe/Berlin)":
-        return df.loc[mask, col].dt.tz_convert("Europe/Berlin")
-    return df.loc[mask, col]
-
-
-
-# === ⚙️ Schiffsspezifische Parameter laden und prüfen ===
-
-def lade_schiffsparameter(pfad="schiffsparameter.json"):
-    """
-    Lädt schiffsspezifische Parameter (Grenzwerte) aus einer JSON-Datei.
-    """
-    if os.path.exists(pfad):
-        try:
-            with open(pfad, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            st.sidebar.error(f"❌ Fehler in JSON-Datei: {e}")
-            return {}
-    else:
-        return {}
-
-def pruefe_werte_gegen_schiffsparameter(df, schiff_name, parameter_dict):
-    """
-    Prüft Spaltenwerte im DataFrame gegen Grenzwerte aus den Schiffsparametern.
-    Entfernt fehlerhafte Zeilen und gibt Info über entfernte Werte.
-    """
-    if schiff_name not in parameter_dict:
-        return df, []
-
-    fehlerhafte_werte = []
-    limits = parameter_dict[schiff_name]
-
-    for spalte, grenz in limits.items():
-        if spalte in df.columns:
-            mask = pd.Series([True] * len(df))
-
-            if grenz.get("min") is not None:
-                mask &= df[spalte] >= grenz["min"]
-
-            if grenz.get("max") is not None:
-                mask &= df[spalte] <= grenz["max"]
-
-            entfernt = (~mask).sum()
-            if entfernt > 0:
-                fehlerhafte_werte.append((spalte, entfernt))
-                df = df[mask]
-
-    return df, fehlerhafte_werte
-
-#==============================================================================================================================
-# 🔵 Hilfsfunktionen für die Dauer-Formatierung
-#==============================================================================================================================
-
-# === ⏳ Dauer-Formatierungsfunktionen ===
-
-def to_hhmmss(td):
-    try:
-        if pd.isnull(td) or td is None:
-            return "-"
-        total_seconds = int(td.total_seconds())
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{hours:02}:{minutes:02}:{seconds:02}"
-    except:
-        return "-"
-
-def to_dezimalstunden(td):
-    try:
-        if pd.isnull(td) or td is None:
-            return "-"
-        value = td.total_seconds() / 3600
-        stunden_formatiert = f"{value:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        return f"{stunden_formatiert} h"
-    except:
-        return "-"
-
-def to_dezimalminuten(td):
-    try:
-        if pd.isnull(td) or td is None:
-            return "-"
-        return f"{int(td.total_seconds() // 60):,} min".replace(",", ".")
-    except:
-        return "-"
-
-def format_dauer(td, zeitformat="dezimalminuten"):
-    if td is None or pd.isnull(td):
-        return "-"
-    
-    if zeitformat == "hh:mm:ss":
-        return to_hhmmss(td)
-    elif zeitformat == "dezimalstunden":
-        return to_dezimalstunden(td)
-    elif zeitformat == "dezimalminuten":
-        return to_dezimalminuten(td)
-    else:
-        return "-"
-
-
-# === 🧮 Sichere Berechnung von Zeitdauern ===
-def sichere_dauer(start, ende, zeitformat):
-    if pd.notnull(start) and pd.notnull(ende):
-        return format_dauer(ende - start, zeitformat)
-    return "-"
-    
-# -----------------------------------------------
-# Hilfsfunktionen (global verwendbar)
-# -----------------------------------------------
-
-def sichere_zeit(ts):
-    if ts is None or pd.isnull(ts):
-        return "-"
-    return format_time(ts, zeitzone)
-    
-    
 #==============================================================================================================================
 # 🔵 Start der Streamlit App
 #==============================================================================================================================
@@ -252,7 +111,7 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
 
     pb = st.number_input(
         "Angenommene Bodendichte pb [t/m³]",
-        min_value=1.5, max_value=2.5,
+        min_value=1.0, max_value=2.5,
         value=1.98, step=0.01, format="%.2f"
     )
 
@@ -606,25 +465,19 @@ if uploaded_files:
         **Solltiefe:** {anzeige_solltiefe}{anzeige_m} ({solltiefe_herkunft})
         """)
 
-
-
-
-        
-
 #==============================================================================================================================
 # 🔵 Tabs definieren
 #==============================================================================================================================
 
 # Tabs für die verschiedenen Visualisierungen
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🗺️ Karte",
-            "📈 Prozess",
-            "📉 Tiefe",
-            "📋 Umläufe - gesamt",
-            "📋 Umlauf - Auswertung"
+            "📊 Prozessdaten",
+            "🌊 Tiefenprofil",
+            "🧾 Umlauftabelle",
+            "🧮 Umlaufanalyse",
+            "🧷 Übersicht + Details"
         ])
-
-    
 
 #==============================================================================================================================
 # Tab - Übersichtskarten 
@@ -976,273 +829,59 @@ if uploaded_files:
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
 
+        
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
         
-        
-        # --- Hilfsfunktion: Bereiche mit bestimmtem Status finden (z.B. Baggern, Verbringen) ---
-        def status_bereiche(df, status_liste):
-            mask = df["Status"].isin(status_liste)
-            indices = mask.astype(int).diff().fillna(0)
-            starts = df.index[(indices == 1)].tolist()
-            ends = df.index[(indices == -1)].tolist()
-            if mask.iloc[0]:
-                starts = [df.index[0]] + starts
-            if mask.iloc[-1]:
-                ends = ends + [df.index[-1]]
-            return starts, ends
-        
-
-
         with tab2:
-        
-            # --- Strategie-Zeitmarken vorbereiten für vertikale Linien ---
+            st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
+            
+            # Nur anzeigen, wenn ein einzelner Umlauf ausgewählt ist
             if umlauf_auswahl != "Alle" and row is not None:
-                # Start- und Endzeit prüfen
-                t_start = pd.to_datetime(row["Start Leerfahrt"])
-                t_ende = pd.to_datetime(row["Ende"])
-                if t_start.tzinfo is None:
-                    t_start = t_start.tz_localize("UTC")
-                if t_ende.tzinfo is None:
-                    t_ende = t_ende.tz_localize("UTC")
-                if df["timestamp"].dt.tz is None:
-                    df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
-        
-                # Umlauf-Daten extrahieren
-                df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-        
-                # Strategie anwenden (nur wenn Spalten in df_umlauf vorhanden sind!)
-                strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-                if "Verdraengung" in df_umlauf.columns and "Ladungsvolumen" in df_umlauf.columns:
-                    werte, debug_info = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df)
-                else:
-                    werte = {}
+                zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
+
+
             else:
-                werte = {}
+                st.info("Bitte einen einzelnen Umlauf auswählen, um das Prozessdiagramm zu sehen.")
 
-        
-            # --- Hilfsfunktion für spaltenabhängige Beschriftung (BB/SB) ---
-            def get_spaltenname(base, seite):
-                if base.endswith("_") and seite in ["BB", "SB"]:
-                    return base + seite
-                elif base.endswith("_") and seite == "BB+SB":
-                    return [base + "BB", base + "SB"]
-                return base
-
-        
-            # --- Kurvenübersicht: Füllstandsdaten und Prozessgrößen definieren ---
-            fuell_cols = [
-                'Fuellstand_BB_vorne', 'Fuellstand_SB_vorne',
-                'Fuellstand_BB_mitte', 'Fuellstand_SB_mitte',
-                'Fuellstand_BB_hinten', 'Fuellstand_SB_hinten'
-            ]
-            fuellstand_farbe = "#AAB7B8"
-        
-            # Kurven für Füllstände
-            kurven_fuellstand = [
-                {"spaltenname": col, "label": f"{col.replace('_', ' ')} [m]", "farbe": fuellstand_farbe, "sichtbar": False, "dicke": 1}
-                for col in fuell_cols if col in df.columns and df[col].notnull().any()
-            ]
-        
-            # Hauptkurven (Prozessdaten)
-            kurven_haupt = [
-                {"spaltenname": "Status", "label": "Status", "farbe": "#BDB76B", "sichtbar": False},
-                {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#6699CC", "sichtbar": False},
-                {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#82A07A", "sichtbar": False, "nur_baggern": True},
-                {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#8C8C8C", "sichtbar": True},
-                {"spaltenname": "Verdraengung", "label": "Verdraengung [t]", "farbe": "#A67C52", "sichtbar": True},
-                {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#A1584F", "sichtbar": False},
-                {"spaltenname": "Ladungsdichte", "label": "Ladungsdichte [t/m³]", "farbe": "#627D98", "sichtbar": False},
-                {"spaltenname": "Feststoffkonzentration", "label": "Feststoffkonzentration [-]", "farbe": "#BCA898", "sichtbar": False},
-                {"spaltenname": "Feststoffvolumen", "label": "Feststoffvolumen [m³]", "farbe": "#7F8C8D", "sichtbar": False},
-                {"spaltenname": "Feststoffmasse", "label": "Feststoffmasse [t]", "farbe": "#52796F", "sichtbar": False},
-                {"spaltenname": "Fuellstand_Mittel", "label": "Füllstand Mittel [m]", "farbe": "#50789C", "sichtbar": True},
-                {"spaltenname": "Geschwindigkeit", "label": "Geschwindigkeit", "farbe": "#82A07A", "sichtbar": False, "sichtbar": True},
-            ] + kurven_fuellstand
-        
-            # --- Start Diagrammaufbau ---
-            df_plot = df.copy()
-            fig = go.Figure()
-        
-            # --- Bereiche Status==2 (Baggern) optisch hervorheben ---
-            df_plot = df_plot.sort_values("timestamp").reset_index(drop=True)
-            starts2, ends2 = status_bereiche(df, [2])
-            for start, end in zip(starts2, ends2):
-                x0 = df.loc[start, "timestamp"]
-                x1 = df.loc[end, "timestamp"]
-                if zeitzone != "UTC":
-                    x0 = convert_timestamp(x0, zeitzone)
-                    x1 = convert_timestamp(x1, zeitzone)
-                fig.add_vrect(
-                    x0=x0, x1=x1,
-                    fillcolor="rgba(0,180,255,0.12)",  # blasses Türkis
-                    layer="below", line_width=0,
-                    annotation_text="Baggern", annotation_position="top left"
-                )
-        
-            # --- Bereiche Status 4/5/6 (Verbringen) optisch hervorheben ---
-            starts4, ends4 = status_bereiche(df, [4, 5, 6])
-            for start, end in zip(starts4, ends4):
-                x0 = df.loc[start, "timestamp"]
-                x1 = df.loc[end, "timestamp"]
-                if zeitzone != "UTC":
-                    x0 = convert_timestamp(x0, zeitzone)
-                    x1 = convert_timestamp(x1, zeitzone)
-                fig.add_vrect(
-                    x0=x0, x1=x1,
-                    fillcolor="rgba(0,255,80,0.11)",  # blasses Grün
-                    layer="below", line_width=0,
-                    annotation_text="Verbringen", annotation_position="top left"
-                )
-        
-            # --- Prozesskurven einzeichnen ---
-            for k in kurven_haupt:
-                spalten = get_spaltenname(k["spaltenname"], seite)
-                farbe = k["farbe"]
-                sicht = k["sichtbar"]
-                label = k["label"]
-                line_width = k.get("dicke", 2)
-        
-                if spalten is None:
-                    continue
-        
-                # --- Falls BB+SB getrennte Spalten vorhanden ---
-                if isinstance(spalten, list):
-                    for s in spalten:
-                        if s not in df.columns:
-                            continue
-                        y = pd.to_numeric(df[s], errors="coerce")
-                        x = plot_x(df, df.index, zeitzone)
-                        if y.empty or y.min() == y.max():
-                            continue
-                        y_min, y_max = y.min(), y.max()
-                        padding = (y_max - y_min) * 0.1 if y_max != y_min else 1
-                        y_min -= padding
-                        y_max += padding
-                        y_norm = (y - y_min) / (y_max - y_min)  # Normalisierung auf 0-1
-        
-                        fig.add_trace(go.Scatter(
-                            x=x,
-                            y=y_norm,
-                            mode="lines",
-                            name=f"{label} ({s[-2:]})",
-                            customdata=y,
-                            hovertemplate=f"{label} ({s[-2:]}): %{{customdata:.2f}}<extra></extra>",
-                            line=dict(color=farbe, width=line_width),
-                            visible=True if sicht else "legendonly"
-                        ))
-                # --- Normale Einzelsäule ---
-                else:
-                    if spalten not in df.columns:
-                        continue
-                    if k.get("nur_baggern"):
-                        mask = df["Status"] == 2
-                    else:
-                        mask = pd.Series([True] * len(df), index=df.index)
-        
-                    y = pd.to_numeric(df.loc[mask, spalten], errors="coerce")
-                    x = plot_x(df, mask, zeitzone)
-        
-                    if y.empty or y.min() == y.max():
-                        continue
-                    y_min, y_max = y.min(), y.max()
-                    padding = (y_max - y_min) * 0.1 if y_max != y_min else 1
-                    y_min -= padding
-                    y_max += padding
-                    y_norm = (y - y_min) / (y_max - y_min)
-        
-                    fig.add_trace(go.Scatter(
-                        x=x,
-                        y=y_norm,
-                        mode="lines",
-                        name=label,
-                        customdata=y,
-                        hovertemplate=f"{label}: %{{customdata:.2f}}<extra></extra>",
-                        line=dict(color=farbe, width=line_width),
-                        visible=True if sicht else "legendonly"
-                    ))
-
-        
-            # --- Diagrammlayout fertigstellen ---
-            st.markdown("#### Umlaufgrafik - Prozessdaten")
-            fig.update_layout(
-                height=600,
-                yaxis=dict(
-                    showticklabels=False,
-                    showgrid=True,
-                    tickvals=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-                    gridcolor="lightgray"
-                ),
-                xaxis=dict(
-                    title="Zeit",
-                    showticklabels=True,
-                    showgrid=True,
-                    gridcolor="lightgray",
-                    type="date"
-                ),
-                hovermode="x unified",
-                showlegend=True,
-                legend=dict(orientation="v", x=1.02, y=1)
-            )
-            
- 
-            # 🔵 Vertikale Linien für Start-/Endzeitpunkte von Verdraengung und Volumen
-
-            # Vertikale Linien für strategische Zeitstempel
-            for key, color, label in [
-                ("Verdraengung Start TS", "#A67C52", "Verdraengung Start"),
-                ("Verdraengung Ende TS", "#A67C52", "Verdraengung Ende"),
-                ("Ladungsvolumen Start TS", "#8C8C8C", "Volumen Start"),
-                ("Ladungsvolumen Ende TS", "#8C8C8C", "Volumen Ende"),
-            ]:
-                ts = werte.get(key)
-                if ts is not None and pd.notnull(ts):
-
-                    ts = pd.to_datetime(ts)
-                    if zeitzone != "UTC":
-                        ts = convert_timestamp(ts, zeitzone)
-                    if hasattr(ts, "to_pydatetime"):
-                        ts = ts.to_pydatetime()
-
-            
-                    fig.add_vline(
-                        x=ts,
-                        line=dict(color=color, width=2, dash="dot"),
-                        annotation=None,
-                        opacity=0.8
-                    )
-            
-            # Plot anzeigen
-            st.plotly_chart(fig, use_container_width=True)
         
             
 #==============================================================================================================================
 # Tab 3 - Diagramm Tiefe Baggerkopf 
 #==============================================================================================================================
             
-       
-        with tab3:
+
+# ==============================================================================================================================
+# Tab 3 - Diagramm Tiefe Baggerkopf (Modularisiert)
+# ==============================================================================================================================
         
-            # --- Spezialdiagramm: Tiefe des Baggerkopfs (nur Status == 2) ----------------------------------------------------------
+        with tab3:
+       
+            df_plot = df.copy().sort_values("timestamp").reset_index(drop=True)
         
             kurven_abs_tiefe = [
-                {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "dicke": 2, "dash": None},  # Dunkelgrün
-                {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "dicke": 2, "dash": "dash"},   # Rot, gestrichelt
+                {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "dicke": 2, "dash": None},
+                {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "dicke": 2, "dash": "dash"},
             ]
         
-            fig2 = go.Figure()  # Neues leeres Plotly-Diagramm erstellen
+            fig2 = go.Figure()
         
-            # Schleife über alle zu plottenden Kurven
+            def get_spaltenname(base, seite):
+                if base.endswith("_") and seite in ["BB", "SB"]:
+                    return base + seite
+                elif base.endswith("_") and seite == "BB+SB":
+                    return [base + "BB", base + "SB"]
+                return base
+        
             for k in kurven_abs_tiefe:
-                spalten = get_spaltenname(k["spaltenname"], seite)  # Spaltenname abhängig von der gewählten Baggerseite
+                spalten = get_spaltenname(k["spaltenname"], seite)
                 farbe = k["farbe"]
                 label = k["label"]
         
                 if spalten is None:
-                    continue  # Spalte existiert nicht → überspringen
+                    continue
         
-                # --- Falls mehrere Spalten vorhanden sind (z.B. BB + SB getrennt) ---
                 if isinstance(spalten, list):
                     for s in spalten:
                         if s not in df_plot.columns:
@@ -1250,22 +889,14 @@ if uploaded_files:
         
                         status_mask = df_plot["Status"] == 2
                         df_filtered = df_plot.loc[status_mask, ["timestamp", s]].copy()
-                        df_filtered["timestamp"] = pd.to_datetime(df_filtered["timestamp"])
                         df_filtered = df_filtered.sort_values("timestamp").reset_index(drop=True)
                         df_filtered = split_by_gap(df_filtered, max_gap_minutes=2)
         
                         for seg_id, seg in df_filtered.groupby("segment"):
                             y = pd.to_numeric(seg[s], errors="coerce")
                             x = seg["timestamp"]
-        
                             if y.empty or pd.isna(y.max()):
                                 continue
-        
-                            y_min = y.min()
-                            y_max = y.max() + 4  # 4 Meter Puffer nach oben
-                            padding = abs(y_min) * 0.1 if abs(y_min) > 0 else 1
-                            y_min -= padding
-        
                             fig2.add_trace(go.Scatter(
                                 x=x,
                                 y=y,
@@ -1278,30 +909,20 @@ if uploaded_files:
                                 connectgaps=False,
                                 showlegend=(seg_id == 0),
                             ))
-        
-                # --- Falls nur eine einzelne Spalte vorhanden ist ---
                 else:
                     if spalten not in df_plot.columns:
                         continue
         
                     status_mask = df_plot["Status"] == 2
                     df_filtered = df_plot.loc[status_mask, ["timestamp", spalten]].copy()
-                    df_filtered["timestamp"] = pd.to_datetime(df_filtered["timestamp"])
                     df_filtered = df_filtered.sort_values("timestamp").reset_index(drop=True)
                     df_filtered = split_by_gap(df_filtered, max_gap_minutes=2)
         
                     for seg_id, seg in df_filtered.groupby("segment"):
                         y = pd.to_numeric(seg[spalten], errors="coerce")
                         x = plot_x(seg, [True] * len(seg), zeitzone)
-        
                         if y.empty or pd.isna(y.max()):
                             continue
-        
-                        y_min = y.min()
-                        y_max = y.max() + 4
-                        padding = abs(y_min) * 0.1 if abs(y_min) > 0 else 1
-                        y_min -= padding
-        
                         fig2.add_trace(go.Scatter(
                             x=x,
                             y=y,
@@ -1315,8 +936,7 @@ if uploaded_files:
                             showlegend=(seg_id == 0),
                         ))
         
-            # --- Dynamische Achsenskalierung je nach vorhandener Tiefe -----------------------------------------------
-        
+            # --- Dynamische Achsenskalierung ---
             tiefe_col = get_spaltenname("Abs_Tiefe_Kopf_", seite)
             if isinstance(tiefe_col, list):
                 vorhandene = [col for col in tiefe_col if col in df_plot.columns]
@@ -1335,8 +955,7 @@ if uploaded_files:
                 y_min = -20
                 y_max = 0
         
-            # --- Solltiefenkorridor (Toleranzbereich) als gefüllte Fläche ------------------------------------------------
-        
+            # --- Solltiefenkorridor (optional) ---
             if {"Solltiefe_Aktuell", "Solltiefe_Oben", "Solltiefe_Unten"}.issubset(df_plot.columns):
                 status_mask = df_plot["Status"] == 2
                 x_corridor = plot_x(df_plot, status_mask, zeitzone)
@@ -1354,30 +973,16 @@ if uploaded_files:
                     showlegend=True,
                 ))
         
-            # --- Diagramm Layout finalisieren ---------------------------------------------------------------------------
-        
+            # --- Layout & Anzeige ---
             st.markdown("#### Baggerkopftiefe")
             fig2.update_layout(
                 height=500,
-                yaxis=dict(
-                    title="Tiefe [m]",
-                    range=[y_min, y_max],
-                    showgrid=True,
-                    gridcolor="lightgray"
-                ),
-                xaxis=dict(
-                    title="Zeit",
-                    showticklabels=True,
-                    showgrid=True,
-                    gridcolor="lightgray",
-                    type="date"
-                ),
+                yaxis=dict(title="Tiefe [m]", range=[y_min, y_max], showgrid=True, gridcolor="lightgray"),
+                xaxis=dict(title="Zeit", type="date", showgrid=True, gridcolor="lightgray"),
                 hovermode="x unified",
                 showlegend=True,
                 legend=dict(orientation="v", x=1.02, y=1),
             )
-        
-            # --- Diagramm anzeigen ---
             st.plotly_chart(fig2, use_container_width=True)
 
    
@@ -1540,13 +1145,12 @@ if uploaded_files:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
 
             
-#==============================================================================================================================
-# Tab 5 - Numerische Auswertung Umlaufdaten
-#==============================================================================================================================
-        
-        # --- HTML-Templates für die Anzeige der Panels ---
-        
-        # Template für allgemeine KPIs (Dauer, Mengen etc.)
+       
+# ======================================================================================================================
+# TAB 5 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
+# ======================================================================================================================
+
+        # 💠 Allgemeines KPI-Panel – zeigt z. B. Umlaufdauer, Verdrängung, Volumen usw.
         panel_template = """
         <div style="
             background:#f4f8fc;
@@ -1569,9 +1173,8 @@ if uploaded_files:
             </div>
         </div>
         """
-
         
-        # Template für Streckenanzeige inkl. kleiner Daueranzeige
+        # 💠 Strecken-Panel – Darstellung von Phase + Strecke + Dauer (z. B. Leerfahrt)
         strecken_panel_template = """
         <div style="
             background:#f4f8fc;
@@ -1593,7 +1196,8 @@ if uploaded_files:
             </div>
         </div>
         """
-
+        
+        # 💠 Spezielles Panel für Dichteparameter (Wasser, Feststoff, Ladung)
         dichte_panel_template = """
         <div style="
             background:#f4f8fc;
@@ -1614,15 +1218,39 @@ if uploaded_files:
             </div>
         </div>
         """
+
+        feld_panel_template = """
+        <div style="
+            background:#f4f8fc;
+            border-radius: 16px;
+            padding: 14px 16px 10px 16px;
+            margin-bottom: 1.2rem;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        ">
+            <div style="font-size:1rem; color:#555; margin-bottom:6px;">{caption}</div>
+            <div style="font-size:1.05rem; color:#222; line-height:1.4;">
+                {content}
+            </div>
+        </div>
+        """
+
+
+        # ======================================================================================================================
+        # TAB 5 – Verarbeitung des ausgewählten Umlaufs
+        # ======================================================================================================================
         
-
-
         with tab5:
+            
+            
+            # 👉 Sicherstellen, dass ein Umlauf ausgewählt ist
             if umlauf_auswahl == "Alle":
                 st.info("Bitte einen konkreten Umlauf auswählen, um die Detailauswertung anzuzeigen.")
                 st.stop()
         
-            # Bei konkretem Umlauf: Zeile finden
+            # 👉 Ausgewählte Umlauf-Zeile aus der Übersicht extrahieren
             zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
             if zeile.empty:
                 st.warning("Ausgewählter Umlauf konnte nicht gefunden werden.")
@@ -1631,7 +1259,9 @@ if uploaded_files:
             row = zeile.iloc[0]
         
             if row is not None:
-                # === Zeiten & Filter ===
+                # ------------------------------------------------------------------------------------------------------------------
+                # 📅 Zeitliche Rahmenbedingungen für den Umlauf setzen
+                # ------------------------------------------------------------------------------------------------------------------
                 t_start = pd.to_datetime(row["Start Leerfahrt"])
                 t_ende = pd.to_datetime(row["Ende"])
                 if t_start.tzinfo is None:
@@ -1641,36 +1271,26 @@ if uploaded_files:
                 if df["timestamp"].dt.tz is None:
                     df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
         
-                # Filter auf aktuellen Umlauf
+                # Daten auf den Zeitraum des Umlaufs filtern
                 df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
         
-                # === Strategie anwenden ===
+                # Strategie für dieses Schiff laden
+                # Sicher den Schiffsnamen ermitteln
+                if isinstance(row, pd.Series) and "Schiff" in row:
+                    schiff_name = row["Schiff"]
+                else:
+                    schiff_name = "Default"  # oder ggf. dein Standardschiffname
+                
                 strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-                
+       
+                bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
+                verbring_namen = df_umlauf[df_umlauf["Status"].isin([4,5,6])]["Polygon_Name"].dropna().unique()
+    
+                    
+                # ------------------------------------------------------------------------------------------------------------------
+                # 🔬 Lokale Hilfsfunktion: TDS-Parameter basierend auf Strategiewerten berechnen
+                # ------------------------------------------------------------------------------------------------------------------
                 def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb):
-                    """
-                    Berechnet TDS-Parameter auf Basis von Strategiewerten und Dichteangaben.
-                
-                    Parameter:
-                    - verd_leer : Verdrängung leer (t)
-                    - verd_voll : Verdrängung voll (t)
-                    - vol_leer  : Volumen leer (m³)
-                    - vol_voll  : Volumen voll (m³)
-                    - pf : Feststoffdichte (t/m³)
-                    - pw : Wasserdichte (t/m³)
-                
-                    Rückgabe:
-                    - dict mit:
-                        - ladungsmasse
-                        - ladungsvolumen
-                        - ladungsdichte
-                        - feststoffkonzentration
-                        - feststoffvolumen
-                        - feststoffmasse
-                    """
-                
-                    result = {}
-                
                     if None in [verd_leer, verd_voll, vol_leer, vol_voll]:
                         return {
                             "ladungsmasse": None,
@@ -1678,22 +1298,18 @@ if uploaded_files:
                             "ladungsdichte": None,
                             "feststoffkonzentration": None,
                             "feststoffvolumen": None,
-                            "feststoffmasse": None
+                            "feststoffmasse": None,
+                            "bodenvolumen": None
                         }
-                
-                    # Berechnungen
+        
                     ladungsmasse = verd_voll - verd_leer
                     ladungsvolumen = vol_voll - vol_leer
                     ladungsdichte = ladungsmasse / ladungsvolumen if ladungsvolumen != 0 else None
                     feststoffkonzentration = (ladungsdichte - pw) / (pf - pw) if ladungsdichte is not None else None
                     feststoffvolumen = feststoffkonzentration * ladungsvolumen if feststoffkonzentration is not None else None
                     feststoffmasse = feststoffvolumen * pf if feststoffvolumen is not None else None
-                    if feststoffmasse is not None and pb is not None:
-                        bodenvolumen = ((pf - pw) / (pf * (pb - pw))) * feststoffmasse
-                    else:
-                        bodenvolumen = None
-                    
-                    # Rückgabe inkl. Bodenvolumen
+                    bodenvolumen = ((pf - pw) / (pf * (pb - pw))) * feststoffmasse if feststoffmasse is not None and pb is not None else None
+        
                     return {
                         "ladungsmasse": ladungsmasse,
                         "ladungsvolumen": ladungsvolumen,
@@ -1701,16 +1317,14 @@ if uploaded_files:
                         "feststoffkonzentration": feststoffkonzentration,
                         "feststoffvolumen": feststoffvolumen,
                         "feststoffmasse": feststoffmasse,
-                        "bodenvolumen": bodenvolumen   # 🆕 hinzugefügt
-                    }                
-
-
-                                
-                
-            
+                        "bodenvolumen": bodenvolumen
+                    }
+        
+                # ------------------------------------------------------------------------------------------------------------------
+                # 🎯 Strategie-Werte berechnen + TDS berechnen
+                # ------------------------------------------------------------------------------------------------------------------
                 if "Verdraengung" in df_umlauf.columns and "Ladungsvolumen" in df_umlauf.columns:
                     werte, debug_info = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df)
-                    # ➕ TDS-Parameter basierend auf Strategie-Werten berechnen
                     tds_werte = berechne_tds_aus_werte(
                         werte.get("Verdraengung Start"),
                         werte.get("Verdraengung Ende"),
@@ -1718,9 +1332,6 @@ if uploaded_files:
                         werte.get("Ladungsvolumen Ende"),
                         pf, pw, pb
                     )
-
-             
-                
                 else:
                     werte = {
                         "Verdraengung Start": None,
@@ -1729,64 +1340,69 @@ if uploaded_files:
                         "Ladungsvolumen Ende": None
                     }
                     debug_info = ["⚠️ Spalten Verdraengung oder Ladungsvolumen fehlen – keine Strategieauswertung möglich."]
-                
-
-                    
-                # Strategie-Werte (für Panel-Anzeige) in Kennzahlen übertragen
+        
+                # ------------------------------------------------------------------------------------------------------------------
+                # 🔢 Vorbereitung von Anzeige- und Differenzwerten für Panels
+                # ------------------------------------------------------------------------------------------------------------------
+                kennzahlen["verdraengung_leer"] = werte.get("Verdraengung Start")
+                kennzahlen["verdraengung_voll"] = werte.get("Verdraengung Ende")
+                kennzahlen["volumen_leer"] = werte.get("Ladungsvolumen Start")
+                kennzahlen["volumen_voll"] = werte.get("Ladungsvolumen Ende")
+        
                 kennzahlen["verdraengung_leer"] = werte.get("Verdraengung Start")
                 kennzahlen["verdraengung_voll"] = werte.get("Verdraengung Ende")
                 kennzahlen["volumen_leer"] = werte.get("Ladungsvolumen Start")
                 kennzahlen["volumen_voll"] = werte.get("Ladungsvolumen Ende")
                 
-                # Anzeigen vorbereiten
-                kennzahlen["verdraengung_leer_disp"] = f"{werte.get('Verdraengung Start'):.0f}" if werte.get("Verdraengung Start") is not None else "-"
-                kennzahlen["verdraengung_voll_disp"] = f"{werte.get('Verdraengung Ende'):.0f}" if werte.get("Verdraengung Ende") is not None else "-"
-                kennzahlen["volumen_leer_disp"] = f"{werte.get('Ladungsvolumen Start'):.0f}" if werte.get("Ladungsvolumen Start") is not None else "-"
-                kennzahlen["volumen_voll_disp"] = f"{werte.get('Ladungsvolumen Ende'):.0f}" if werte.get("Ladungsvolumen Ende") is not None else "-"
-                kennzahlen["delta_verdraengung_disp"] = (
-                    f"{werte.get('Verdraengung Ende') - werte.get('Verdraengung Start'):.0f}"
-                    if werte.get("Verdraengung Ende") is not None and werte.get("Verdraengung Start") is not None else "-"
+                kennzahlen["delta_verdraengung"] = (
+                    werte.get("Verdraengung Ende") - werte.get("Verdraengung Start")
+                    if None not in [werte.get("Verdraengung Start"), werte.get("Verdraengung Ende")] else None
                 )
-                kennzahlen["ladungsvolumen_disp"] = (
-                    f"{werte.get('Ladungsvolumen Ende') - werte.get('Ladungsvolumen Start'):.0f}"
-                    if werte.get("Ladungsvolumen Ende") is not None and werte.get("Ladungsvolumen Start") is not None else "-"
+                
+                kennzahlen["delta_volumen"] = (
+                    werte.get("Ladungsvolumen Ende") - werte.get("Ladungsvolumen Start")
+                    if None not in [werte.get("Ladungsvolumen Start"), werte.get("Ladungsvolumen Ende")] else None
                 )
 
-
-                # Start- und Endzeit des Umlaufs auslesen und Zeitzone prüfen
-                t_start = pd.to_datetime(row["Start Leerfahrt"])
-                t_ende = pd.to_datetime(row["Ende"])
-                if t_start.tzinfo is None:
-                    t_start = t_start.tz_localize("UTC")
-                if t_ende.tzinfo is None:
-                    t_ende = t_ende.tz_localize("UTC")
-                if df["timestamp"].dt.tz is None:
-                    df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
         
-                # --- Daten auf den aktuellen Umlauf filtern ---
-                # Statt:
-                # df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-                
-                # Extra: Pufferzeit zurück für Startzeitstrategien
-                zeitpuffer_vorher = pd.Timedelta("15min")  # ggf. auch 30min oder 60min
-                
+                # ------------------------------------------------------------------------------------------------------------------
+                # 🚢 Erneutes Einlesen + Pufferzeit (für Streckenberechnung mit erweitertem Zeitrahmen)
+                # ------------------------------------------------------------------------------------------------------------------
+                zeitpuffer_vorher = pd.Timedelta("15min")
                 df_umlauf = df[(df["timestamp"] >= (t_start - zeitpuffer_vorher)) & (df["timestamp"] <= t_ende)]
-
-                     
-                # --- Streckenlängen für alle Phasen berechnen ---
-                strecken = berechne_strecken(df_umlauf, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=epsg_code)
-                gesamt = sum([v for v in [strecken["leerfahrt"], strecken["baggern"], strecken["vollfahrt"], strecken["verbringen"]] if v is not None])
         
-                # Formatierte Strings für die Strecken
-                strecke_leer_disp = f"{strecken['leerfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_baggern_disp = f"{strecken['baggern']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_vollfahrt_disp = f"{strecken['vollfahrt']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_verbringen_disp = f"{strecken['verbringen']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                strecke_gesamt_disp = f"{gesamt:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                # ------------------------------------------------------------------------------------------------------------------
+                # 📏 Strecken je Phase berechnen
+                # ------------------------------------------------------------------------------------------------------------------
+                strecken = berechne_strecken(
+                    df_umlauf,
+                    rw_col="RW_Schiff",
+                    hw_col="HW_Schiff",
+                    status_col="Status",
+                    epsg_code=epsg_code
+                )
+                gesamt = sum([
+                    v for v in [
+                        strecken["leerfahrt"],
+                        strecken["baggern"],
+                        strecken["vollfahrt"],
+                        strecken["verbringen"]
+                    ] if v is not None
+                ])
         
-
+                # Formatierung für Anzeige (z. B. 1.234,56)
+                def format_km(val):
+                    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if val is not None else "-"
         
-                # --- Styling für die Panels laden ---
+                strecke_leer_disp = format_km(strecken['leerfahrt'])
+                strecke_baggern_disp = format_km(strecken['baggern'])
+                strecke_vollfahrt_disp = format_km(strecken['vollfahrt'])
+                strecke_verbringen_disp = format_km(strecken['verbringen'])
+                strecke_gesamt_disp = format_km(gesamt)
+        
+                # ------------------------------------------------------------------------------------------------------------------
+                # 🎨 HTML-Styling für KPI-Panels
+                # ------------------------------------------------------------------------------------------------------------------
                 st.markdown("""
                 <style>
                     .big-num {font-size: 2.5rem; font-weight: bold;}
@@ -1796,256 +1412,128 @@ if uploaded_files:
                 </style>
                 """, unsafe_allow_html=True)
         
-                # --- Headline-Kennzahlen (Dauer, Baggerzeit, Verdraengungsänderung, Volumen) anzeigen ---
-                umlaufdauer = kennzahlen.get('Umlaufdauer')
-                baggerzeit = kennzahlen.get('Baggerzeit')
-                delta_verdraengung = kennzahlen.get('Delta Verdraengung')  # <- neue saubere Kennzahl
-                
-                umlauf_start = row.get('Start Leerfahrt', '-')
-                umlauf_ende = row.get('Ende', '-')
-                bagger_start = row.get('Start Baggern', '-')
-                bagger_ende = row.get('Start Vollfahrt', '-')
-                
-                # Beispiel: Änderung der Verdraengung während des Umlaufs
-                df_umlauf = df[(df["timestamp"] >= pd.to_datetime(row["Start Leerfahrt"]).tz_localize("UTC")) &
-                               (df["timestamp"] <= pd.to_datetime(row["Ende"]).tz_localize("UTC"))]
-                
-                delta_verdraengung_start = df_umlauf["Verdraengung"].iloc[0] if not df_umlauf.empty else None
-                delta_verdraengung_end = df_umlauf["Verdraengung"].iloc[-1] if not df_umlauf.empty else None
-
-                # Zeitdauern je Phase (für Panels)
+                # ------------------------------------------------------------------------------------------------------------------
+                # ⏱ Dauer pro Phase berechnen
+                # ------------------------------------------------------------------------------------------------------------------
                 dauer_leerfahrt_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Start Baggern"), zeitformat)
                 dauer_baggern_disp = sichere_dauer(row.get("Start Baggern"), row.get("Start Vollfahrt"), zeitformat)
                 dauer_vollfahrt_disp = sichere_dauer(row.get("Start Vollfahrt"), row.get("Start Verklappen/Pump/Rainbow"), zeitformat)
                 dauer_verbringen_disp = sichere_dauer(row.get("Start Verklappen/Pump/Rainbow"), row.get("Ende"), zeitformat)
                 dauer_umlauf_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Ende"), zeitformat)
 
-                       
-                # --- Anordnung der Hauptkennzahlen in vier Spalten ---
+
+                # ======================================================================================================================
+                # TAB 5 – Anzeige der Panels: Zeitphasen, Baggerwerte, Strecken, Strategiewerte (Debug)
+                # ======================================================================================================================
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📌 Anzeige Bagger- und Verbringfelder in Panel-Stil
+                # ----------------------------------------------------------------------------------------------------------------------
+
+                #st.markdown("#### Bagger- und Verbringfelder", unsafe_allow_html=True)
+                
+                bagger_felder_text = "<br>".join(sorted(bagger_namen)) if len(bagger_namen) > 0 else "-"
+                verbring_felder_text = "<br>".join(sorted(verbring_namen)) if len(verbring_namen) > 0 else "-"
+                
+               
+
+                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen)
+
+                
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📊 Zeitliche Phasen anzeigen (Leerfahrt, Baggern etc.)
+                # ----------------------------------------------------------------------------------------------------------------------
+                st.markdown("---")
                 st.markdown("#### Statuszeiten im Umlauf", unsafe_allow_html=True)
                 if kennzahlen:
-                    col1, col2, col3, col4, col5 = st.columns(5)
-                    
-                    col1.markdown(panel_template.format(
-                        caption="Leerfahrt",
-                        value=f"{dauer_leerfahrt_disp}" if dauer_leerfahrt_disp is not None else "-",
-                        unit="min",
-                        change_label1="Startzeit:",
-                        change_value1=format_time(row.get("Start Leerfahrt"), zeitzone),
-                        change_label2="Endzeit:",
-                        change_value2=format_time(row.get("Start Baggern"), zeitzone)
-                    ), unsafe_allow_html=True)
-                    
-                    col2.markdown(panel_template.format(
-                        caption="Baggern",
-                        value=f"{dauer_baggern_disp}" if dauer_baggern_disp is not None else "-",
-                        unit="min",
-                        change_label1="Startzeit:",
-                        change_value1=format_time(row.get("Start Baggern"), zeitzone),
-                        change_label2="Endzeit:",
-                        change_value2=format_time(row.get("Start Vollfahrt"), zeitzone)
-                    ), unsafe_allow_html=True)
-                    
-                    col3.markdown(panel_template.format(
-                        caption="Vollfahrt",
-                        value=f"{dauer_vollfahrt_disp}" if dauer_vollfahrt_disp is not None else "-",
-                        unit="min",
-                        change_label1="Startzeit:",
-                        change_value1=format_time(row.get("Start Vollfahrt"), zeitzone),
-                        change_label2="Endzeit:",
-                        change_value2=format_time(row.get("Start Verklappen/Pump/Rainbow"), zeitzone)
-                    ), unsafe_allow_html=True)
-                    
-                    col4.markdown(panel_template.format(
-                        caption="Verbringen",
-                        value=f"{dauer_verbringen_disp}" if dauer_verbringen_disp is not None else "-",
-                        unit="min",
-                        change_label1="Startzeit:",
-                        change_value1=format_time(row.get("Start Verklappen/Pump/Rainbow"), zeitzone),
-                        change_label2="Endzeit:",
-                        change_value2=format_time(row.get("Ende"), zeitzone)
-                    ), unsafe_allow_html=True)
-                    
-                    col5.markdown(panel_template.format(
-                        caption="Umlaufdauer",
-                        value=f"{dauer_umlauf_disp}" if dauer_umlauf_disp is not None else "-",
-                        unit="min",
-                        change_label1="Startzeit:",
-                        change_value1=format_time(row.get("Start Leerfahrt"), zeitzone),
-                        change_label2="Endzeit:",
-                        change_value2=format_time(row.get("Ende"), zeitzone)
-                    ), unsafe_allow_html=True)
+                    zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
+                
 
-                # --- Trenner ---
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
+                # ----------------------------------------------------------------------------------------------------------------------
                 st.markdown("---")
                 st.markdown("#### Baggerwerte im Umlauf", unsafe_allow_html=True)
-                if kennzahlen:    
-                    col6, col7, col8, col9, col10 = st.columns(5)
-                    
-                    col6.markdown(panel_template.format(
-                        caption="Verdrängung",
-                        value=kennzahlen.get("delta_verdraengung_disp", "-") + " t",
-                        unit="",
-                        change_label1="leer:",
-                        change_value1=kennzahlen.get("verdraengung_leer_disp", "-") + " t",
-                        change_label2="voll:",
-                        change_value2=kennzahlen.get("verdraengung_voll_disp", "-") + " t"
-                    ), unsafe_allow_html=True)
-                    
-                    col7.markdown(panel_template.format(
-                        caption="Ladungsvolumen",
-                        value=kennzahlen.get("ladungsvolumen_disp", "-") + " m³",
-                        unit="",
-                        change_label1="leer:",
-                        change_value1=kennzahlen.get("volumen_leer_disp", "-") + " m³",
-                        change_label2="voll:",
-                        change_value2=kennzahlen.get("volumen_voll_disp", "-") + " m³"
-                    ), unsafe_allow_html=True)
-                    
-                    
-                    
-                    col8.markdown(panel_template.format(
-                        caption="Feststoffmasse",
-                        value=f"{tds_werte.get('feststoffmasse', '-'):,.0f} t" if tds_werte.get("feststoffmasse") is not None else "-",
-                        change_label1="Volumen:",
-                        change_value1=f"{tds_werte.get('feststoffvolumen', '-'):,.0f} m³" if tds_werte.get("feststoffvolumen") is not None else "-",
-                        change_label2="Konzentration:",
-                        change_value2=f"{tds_werte.get('feststoffkonzentration', '-'):,.1%}" if tds_werte.get("feststoffkonzentration") is not None else "-"
-                    ), unsafe_allow_html=True)
+                if kennzahlen:
+                    zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
+                
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📍 Streckenanzeige pro Phase
+                # ----------------------------------------------------------------------------------------------------------------------
+                st.markdown("---")
+                st.markdown("#### Strecken im Umlauf")
+                if kennzahlen:                
+                    zeige_strecken_panels(
+                        strecke_leer_disp, strecke_baggern_disp, strecke_vollfahrt_disp,
+                        strecke_verbringen_disp, strecke_gesamt_disp,
+                        dauer_leerfahrt_disp, dauer_baggern_disp, dauer_vollfahrt_disp,
+                        dauer_verbringen_disp, dauer_umlauf_disp,
+                        strecken_panel_template
+                    )
+              
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 🛠️ Debug-Infos (ausklappbar) – Strategie-Auswertung und Werte anzeigen
+                # ----------------------------------------------------------------------------------------------------------------------
+                st.markdown("---")
+                with st.expander("🛠️ Debug-Infos & Strategieergebnisse", expanded=False):
+                    st.markdown(f"🔍 **Strategie Verdraengung**: `{strategie.get('Verdraengung', {})}`")
+                    st.markdown(f"🔍 **Strategie Ladungsvolumen**: `{strategie.get('Ladungsvolumen', {})}`")
+                
+                    for zeile in debug_info:
+                        st.markdown(zeile)
+                
+                    st.markdown("### 📋 Übersicht Start-/Endwerte laut Strategie")
+                
+                    werte_tabelle = pd.DataFrame([
+                        {
+                            "Parameter": "Verdraengung Start",
+                            "Wert": f"{werte['Verdraengung Start']:.2f}" if werte.get("Verdraengung Start") is not None else "-",
+                            "Zeitstempel": sichere_zeit(werte.get("Verdraengung Start TS"), zeitzone)
+                        },
+                        {
+                            "Parameter": "Verdraengung Ende",
+                            "Wert": f"{werte['Verdraengung Ende']:.2f}" if werte.get("Verdraengung Ende") is not None else "-",
+                            "Zeitstempel": sichere_zeit(werte.get("Verdraengung Ende TS"), zeitzone)
+                        },
+                        {
+                            "Parameter": "Ladungsvolumen Start",
+                            "Wert": f"{werte['Ladungsvolumen Start']:.2f}" if werte.get("Ladungsvolumen Start") is not None else "-",
+                            "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Start TS"), zeitzone)
+                        },
+                        {
+                            "Parameter": "Ladungsvolumen Ende",
+                            "Wert": f"{werte['Ladungsvolumen Ende']:.2f}" if werte.get("Ladungsvolumen Ende") is not None else "-",
+                            "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Ende TS"), zeitzone)
+                        }
+                    ])
+                
+                    st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
 
-                    
-                    col9.markdown(panel_template.format(
-                        caption="Bodenvolumen",
-                        value=f"{tds_werte.get('bodenvolumen', '-'):,.0f} m³" if tds_werte.get("bodenvolumen") is not None else "-",
-                        unit="",
-                        change_label1="Bodendichte:",
-                        change_value1=f"{pb:.3f} t/m³",
-                        change_label2="",
-                        change_value2=""
-                    ), unsafe_allow_html=True)
 
-                    # 🧮 TDS-Ergebnis prüfen
-                    if 'tds_result' in locals():
-                        ladungsdichte_disp = f"{tds_result.get('ladungsdichte', '-'):,.2f}".replace(",", ".") if tds_result.get("ladungsdichte") is not None else "-"
-                    else:
-                        ladungsdichte_disp = "-"
-                    
-                    # 📦 Panel Dichte anzeigen
-                    col10.markdown(dichte_panel_template.format(
-                        caption="Dichte",
-                        pw=f"{pw:.3f}",
-                        pf=f"{pf:.3f}",
-                        pl=ladungsdichte_disp
-                    ), unsafe_allow_html=True)
+#==============================================================================================================================
+# Tab - Umlauftabelle - gesamt 
+#==============================================================================================================================
+            
+
+        with tab6:
+           
+            zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen)
+            st.markdown("---")
+            # ⚙️ Statuszeiten
+            #st.markdown("### Statuszeiten im Umlauf")
+            zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
 
         
-                # --- Trenner ---
-                st.markdown("---")
-                
-                
- 
-                # --- Streckenanzeige pro Phase inkl. Dauer ---
-                st.markdown("#### Strecken im Umlauf")
-                
-                # Sicherstellen, dass alle Strecken-Werte vorhanden sind
-                def format_km(value):
-                    if value is None:
-                        return "-"
-                    return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                
-                strecke_leer_disp = format_km(strecken.get("leerfahrt"))
-                strecke_baggern_disp = format_km(strecken.get("baggern"))
-                strecke_vollfahrt_disp = format_km(strecken.get("vollfahrt"))
-                strecke_verbringen_disp = format_km(strecken.get("verbringen"))
-                strecke_gesamt_disp = format_km(gesamt)
-                
-                # Zeitdauern anzeigen – bereits abgesichert mit sichere_dauer()
-                dauer_leerfahrt_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Start Baggern"), zeitformat)
-                dauer_baggern_disp = sichere_dauer(row.get("Start Baggern"), row.get("Start Vollfahrt"), zeitformat)
-                dauer_vollfahrt_disp = sichere_dauer(row.get("Start Vollfahrt"), row.get("Start Verklappen/Pump/Rainbow"), zeitformat)
-                dauer_verbringen_disp = sichere_dauer(row.get("Start Verklappen/Pump/Rainbow"), row.get("Ende"), zeitformat)
-                dauer_umlauf_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Ende"), zeitformat)
-                
-                # Darstellung in 5 Panels
-                col_st1, col_st2, col_st3, col_st4, col_st5 = st.columns(5)
-                
-                col_st1.markdown(strecken_panel_template.format(
-                    caption="Leerfahrt",
-                    value=f"{strecke_leer_disp} km",
-                    dauer=dauer_leerfahrt_disp
-                ), unsafe_allow_html=True)
-                
-                col_st2.markdown(strecken_panel_template.format(
-                    caption="Baggern",
-                    value=f"{strecke_baggern_disp} km",
-                    dauer=dauer_baggern_disp
-                ), unsafe_allow_html=True)
-                
-                col_st3.markdown(strecken_panel_template.format(
-                    caption="Vollfahrt",
-                    value=f"{strecke_vollfahrt_disp} km",
-                    dauer=dauer_vollfahrt_disp
-                ), unsafe_allow_html=True)
-                
-                col_st4.markdown(strecken_panel_template.format(
-                    caption="Verbringen",
-                    value=f"{strecke_verbringen_disp} km",
-                    dauer=dauer_verbringen_disp
-                ), unsafe_allow_html=True)
-                
-                col_st5.markdown(strecken_panel_template.format(
-                    caption="Gesamt",
-                    value=f"{strecke_gesamt_disp} km",
-                    dauer=dauer_umlauf_disp
-                ), unsafe_allow_html=True)
+            # 📈 Diagramm
+            #st.markdown("### Prozessdiagramm")
+            zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
+
+        
+            # ⚒️ Baggerwerte
+            #st.markdown("### Baggerwerte")
+            zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
 
 
-
-#------ DEBUG Strategien
-            
-            st.markdown("---")
-
-            # --- Debug-Tabelle basierend auf den Strategie-Werten (aus `werte`) ---
-            with st.expander("🛠️ Debug-Infos & Strategieergebnisse", expanded=False):
-            
-                # Strategien anzeigen
-                st.markdown(f"🔍 **Strategie Verdraengung**: `{strategie.get('Verdraengung', {})}`")
-                st.markdown(f"🔍 **Strategie Ladungsvolumen**: `{strategie.get('Ladungsvolumen', {})}`")
-            
-                # Zeilenweises Debugging anzeigen
-                for zeile in debug_info:
-                    st.markdown(zeile)
-            
-                # Tabelle: Übersicht Start-/Endwerte laut Strategie
-                st.markdown("### 📋 Übersicht Start-/Endwerte laut Strategie")
-            
-                werte_tabelle = pd.DataFrame([
-                    {
-                        "Parameter": "Verdraengung Start",
-                        "Wert": f"{werte['Verdraengung Start']:.2f}" if werte.get("Verdraengung Start") is not None else "-",
-                        "Zeitstempel": sichere_zeit(werte.get("Verdraengung Start TS"))
-                    },
-                    {
-                        "Parameter": "Verdraengung Ende",
-                        "Wert": f"{werte['Verdraengung Ende']:.2f}" if werte.get("Verdraengung Ende") is not None else "-",
-                        "Zeitstempel": sichere_zeit(werte.get("Verdraengung Ende TS"))
-                    },
-                    {
-                        "Parameter": "Ladungsvolumen Start",
-                        "Wert": f"{werte['Ladungsvolumen Start']:.2f}" if werte.get("Ladungsvolumen Start") is not None else "-",
-                        "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Start TS"))
-                    },
-                    {
-                        "Parameter": "Ladungsvolumen Ende",
-                        "Wert": f"{werte['Ladungsvolumen Ende']:.2f}" if werte.get("Ladungsvolumen Ende") is not None else "-",
-                        "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Ende TS"))
-                    }
-                ])
-            
-                st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
-
-
-
+       
 
 #=====================================================================================
     except Exception as e:

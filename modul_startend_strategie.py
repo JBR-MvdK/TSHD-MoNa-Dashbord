@@ -1,17 +1,33 @@
+# ======================================================================================================================
+# 📦 modul_startend_strategie.py – Ermittlung von Start- und Endwerten gemäß Strategie
+# ======================================================================================================================
+
 import pandas as pd
 
+# ----------------------------------------------------------------------------------------------------------------------
+# 🔧 Hilfsfunktionen
+# ----------------------------------------------------------------------------------------------------------------------
+
 def first_or_none(series):
+    """Gibt den ersten Wert einer Series zurück oder None, wenn leer."""
     return series.iloc[0] if not series.empty else None
 
 def first_index_or_none(series):
+    """Gibt den Index des ersten Werts zurück oder None, wenn leer."""
     return series.index[0] if not series.empty else None
 
 def get_statuswechselzeit(df, von, nach, zeit_col="timestamp"):
+    """
+    Sucht den Zeitpunkt eines direkten Statuswechsels von `von` nach `nach`.
+    """
     mask = (df["Status"].shift(1) == von) & (df["Status"] == nach)
     wechsler = df[mask]
     return wechsler[zeit_col].iloc[0] if not wechsler.empty else None
 
 def get_statuswechselzeit_flexibel(df, von, nach, zeit_col="timestamp", ignorierte_status=None):
+    """
+    Findet auch indirekte Wechsel von `von` nach `nach` unter Überspringung von definierten Zwischenstatus.
+    """
     if ignorierte_status is None:
         ignorierte_status = []
     df = df[[zeit_col, "Status"]].copy()
@@ -31,6 +47,9 @@ def get_statuswechselzeit_flexibel(df, von, nach, zeit_col="timestamp", ignorier
     return None
 
 def suche_extrem_zweizeitfenster(df, zeitpunkt, vor, nach, col, art="max", zeit_col="timestamp"):
+    """
+    Sucht min/max-Wert innerhalb eines Zeitfensters (z. B. 5min vor bis 2min nach einem Referenzzeitpunkt).
+    """
     t_start = zeitpunkt - pd.Timedelta(vor)
     t_ende = zeitpunkt + pd.Timedelta(nach)
     df_zeit = df[(df[zeit_col] >= t_start) & (df[zeit_col] <= t_ende)]
@@ -40,18 +59,28 @@ def suche_extrem_zweizeitfenster(df, zeitpunkt, vor, nach, col, art="max", zeit_
     ts = df_zeit[df_zeit[col] == val][zeit_col].iloc[0] if not df_zeit[df_zeit[col] == val].empty else None
     return val, ts
 
-# ---------------------------------------------------------------------------------------------------------------------
-# HAUPTFUNKTION
-# ---------------------------------------------------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------------------------------------------------
+# 🔍 Hauptfunktion: berechne_start_endwerte
+# ----------------------------------------------------------------------------------------------------------------------
+
 def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=None):
+    """
+    Wendet eine Strategie zur Bestimmung von Start- und Endwerten (Verdrängung, Volumen) an.
+    Gibt zusätzlich Debug-Infos zurück.
+    """
+
     debug_info = []
     result = {}
 
+    # Strategien extrahieren
     strat_v = strategie.get("Verdraengung", {}) if strategie else {}
     strat_l = strategie.get("Ladungsvolumen", {}) if strategie else {}
 
+    # Referenz-DataFrame festlegen (z. B. Gesamtdaten)
     df_ref = df_gesamt if df_gesamt is not None else df
 
+    # --- Statuswechsel-Zeitpunkte suchen ---
     statuszeit_1_2 = get_statuswechselzeit(df_ref, 1, 2, zeit_col)
     statuszeit_2_3 = get_statuswechselzeit_flexibel(df_ref, 2, 3, zeit_col, ignorierte_status=[1])
     statuszeit_456_1 = get_statuswechselzeit(df_ref, 456, 1, zeit_col)
@@ -64,7 +93,12 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     debug_info.append(f"📍 Statuszeit 2→3: {statuszeit_2_3}")
     debug_info.append(f"📍 Statuszeit 456→1: {statuszeit_456_1}")
 
+    # ------------------------------------------------------------------------------------------------------------------
+    # 🔧 Subfunktionen innerhalb der Hauptfunktion
+    # ------------------------------------------------------------------------------------------------------------------
+
     def standardwert(df, ts, col, label):
+        """Gibt Wert exakt am Statuszeitpunkt zurück (Fallback)."""
         sub = df[df[zeit_col] == ts] if ts else pd.DataFrame()
         val = first_or_none(sub[col]) if col in sub.columns else None
         ts_out = first_index_or_none(sub[col])
@@ -73,6 +107,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         return val, ts_out
 
     def strategie_extremwert(df, art, ts_ref, vor, nach, col, zeit_col, debug_info, label):
+        """Sucht Min/Max-Wert im definierten Zeitbereich um einen Referenzzeitpunkt."""
         if ts_ref is None:
             debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
             return None, None
@@ -80,7 +115,9 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         debug_info.append(f"✅ {label}: {art} in {vor} vor bis {nach} nach Statuszeit")
         return wert, ts
 
-    # --- Verdrängung Start ---
+    # ------------------------------------------------------------------------------------------------------------------
+    # 🟦 Verdrängung Start
+    # ------------------------------------------------------------------------------------------------------------------
     strat = strat_v.get("Start", "standard")
     if strat == "min_in_5vor2nach_1_2":
         wert, ts = strategie_extremwert(df, "min", statuszeit_1_2, "5min", "2min", "Verdraengung", zeit_col, debug_info, "Verdraengung Start")
@@ -97,7 +134,9 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     result["Verdraengung Start"] = wert
     result["Verdraengung Start TS"] = ts
 
-    # --- Verdrängung Ende ---
+    # ------------------------------------------------------------------------------------------------------------------
+    # 🟥 Verdrängung Ende
+    # ------------------------------------------------------------------------------------------------------------------
     strat = strat_v.get("Ende", "standard")
     if strat == "max_in_2min_um_2_3":
         wert, ts = strategie_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
@@ -108,7 +147,9 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     result["Verdraengung Ende"] = wert
     result["Verdraengung Ende TS"] = ts
 
-    # --- Ladungsvolumen Start ---
+    # ------------------------------------------------------------------------------------------------------------------
+    # 🟧 Ladungsvolumen Start
+    # ------------------------------------------------------------------------------------------------------------------
     strat = strat_l.get("Start", "standard")
     if strat == "min_in_5vor2nach_1_2":
         wert, ts = strategie_extremwert(df, "min", statuszeit_1_2, "5min", "2min", "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
@@ -131,7 +172,9 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     result["Ladungsvolumen Start"] = wert
     result["Ladungsvolumen Start TS"] = ts
 
-    # --- Ladungsvolumen Ende ---
+    # ------------------------------------------------------------------------------------------------------------------
+    # 🟨 Ladungsvolumen Ende
+    # ------------------------------------------------------------------------------------------------------------------
     strat = strat_l.get("Ende", "standard")
     if strat == "2min_nach_2_3" and statuszeit_2_3:
         ziel = statuszeit_2_3 + pd.Timedelta("2min")
