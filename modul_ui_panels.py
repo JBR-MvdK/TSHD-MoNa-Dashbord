@@ -1,6 +1,8 @@
 import streamlit as st
 from modul_hilfsfunktionen import format_time, sichere_dauer, format_de
 
+from modul_polygon_auswertung import berechne_punkte_und_zeit
+
 # =================================================================================================
 # 📊 Anzeige-Funktionen für Tab5 (Panels mit Zeiten, Mengen, Strecken, Feldern etc.)
 # =================================================================================================
@@ -100,24 +102,28 @@ def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_
     ), unsafe_allow_html=True)
 
     col8.markdown(panel_template.format(
+        caption="Ladungsdichte",
+        value=format_de(tds_werte.get("ladungsdichte"), 2) + " t/m³" if tds_werte.get("ladungsdichte") is not None else "-",
+        change_label1="Wasser:", change_value1=f"{pw:.3f}".replace(".", ",") + " t/m³",
+        change_label2="Feststoff:", change_value2=f"{pf:.3f}".replace(".", ",") + " t/m³"
+    ), unsafe_allow_html=True)
+
+    
+    col9.markdown(panel_template.format(
         caption="Feststoffmasse",
         value=format_de(tds_werte.get("feststoffmasse"), 0) + " t" if tds_werte.get("feststoffmasse") is not None else "-",
         change_label1="Volumen:", change_value1=format_de(tds_werte.get("feststoffvolumen"), 0) + " m³" if tds_werte.get("feststoffvolumen") is not None else "-",
         change_label2="Konzentration:", change_value2=f"{tds_werte.get('feststoffkonzentration'):.1%}".replace(".", ",") if tds_werte.get("feststoffkonzentration") is not None else "-"
     ), unsafe_allow_html=True)
 
-    col9.markdown(panel_template.format(
+    col10.markdown(panel_template.format(
         caption="Bodenvolumen",
         value=format_de(tds_werte.get("bodenvolumen"), 0) + " m³" if tds_werte.get("bodenvolumen") is not None else "-",
         change_label1="Bodendichte:", change_value1=f"{pb:.3f}".replace(".", ",") + " t/m³",
         change_label2="", change_value2=""
     ), unsafe_allow_html=True)
 
-    ladungsdichte_disp = format_de(tds_werte.get("ladungsdichte"), 2) if tds_werte.get("ladungsdichte") is not None else "-"
-    col10.markdown(dichte_panel_template.format(
-        caption="Dichte",
-        pw=f"{pw:.3f}".replace(".", ","), pf=f"{pf:.3f}".replace(".", ","), pl=ladungsdichte_disp
-    ), unsafe_allow_html=True)
+
 
 
 # -------------------------------------------------------------------------------------------------
@@ -162,36 +168,91 @@ def zeige_strecken_panels(
 # 🗂 Anzeige der Polygon-Namen (Bagger- und Verbringfelder)
 # -------------------------------------------------------------------------------------------------
 
-def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen):
+def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df):
     """
-    Zeigt Bagger- und Verbringfeldnamen nebeneinander als gelayoutete Blöcke.
+    Zeigt Bagger- und Verbringfeldnamen mit reiner Verweilzeit in Minuten.
     """
     col_feld1, col_feld2 = st.columns([1, 1])
 
+    def berechne_minuten(namen_liste, df_status):
+        polygon_counts = df_status["Polygon_Name"].value_counts()
+        result = {}
+        for name in namen_liste:
+            if name != "außerhalb":
+                count = polygon_counts.get(name, 0)
+                result[name] = round((count * 10) / 60, 1)
+        # separat außerhalb behandeln
+        ausserhalb_count = polygon_counts.get("außerhalb", 0)
+        result["außerhalb"] = round((ausserhalb_count * 10) / 60, 1)
+        return result
+
+    # Baggerfelder
+    df_bagger = df[df["Status"] == 2]
+    bagger_zeiten = berechne_minuten(bagger_namen, df_bagger)
+
     with col_feld1:
         st.markdown("**Baggerfelder**")
-        if len(bagger_namen) > 0:
+        if bagger_zeiten:
             for name in sorted(bagger_namen):
+                if name == "außerhalb":
+                    continue
+                minutes = bagger_zeiten.get(name, 0.0)
                 st.markdown(f"""<div style='
                     background: #f4f8fc;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #222;'>{name}</div>""", unsafe_allow_html=True)
+                    color: #222;'>
+                    {name} – {minutes} min
+                </div>""", unsafe_allow_html=True)
+
+            ausserhalb_min = bagger_zeiten.get("außerhalb", 0.0)
+            if ausserhalb_min > 0:
+                st.markdown(f"""<div style='
+                    background: #fff3f3;
+                    border-radius: 8px;
+                    padding: 6px 10px;
+                    margin-top: 8px;
+                    font-size: 0.95rem;
+                    color: #aa0000;'>
+                    außerhalb – {ausserhalb_min} min
+                </div>""", unsafe_allow_html=True)
         else:
             st.markdown("keine Polygone eingeladen")
 
+    # Verbringfelder
+    df_verbring = df[df["Status"] == 4]
+    verbring_zeiten = berechne_minuten(verbring_namen, df_verbring)
+
     with col_feld2:
         st.markdown("**Verbringfelder**")
-        if len(verbring_namen) > 0:
+        if verbring_zeiten:
             for name in sorted(verbring_namen):
+                if name == "außerhalb":
+                    continue
+                minutes = verbring_zeiten.get(name, 0.0)
                 st.markdown(f"""<div style='
                     background: #f4f8fc;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #222;'>{name}</div>""", unsafe_allow_html=True)
+                    color: #222;'>
+                    {name} – {minutes} min
+                </div>""", unsafe_allow_html=True)
+
+            ausserhalb_min = verbring_zeiten.get("außerhalb", 0.0)
+            if ausserhalb_min > 0:
+                st.markdown(f"""<div style='
+                    background: #fff3f3;
+                    border-radius: 8px;
+                    padding: 6px 10px;
+                    margin-top: 8px;
+                    font-size: 0.95rem;
+                    color: #aa0000;'>
+                    außerhalb – {ausserhalb_min} min
+                </div>""", unsafe_allow_html=True)
         else:
             st.markdown(" ")
+

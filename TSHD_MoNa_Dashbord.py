@@ -61,6 +61,8 @@ from modul_ui_panels import zeige_statuszeiten_panels, zeige_baggerwerte_panels,
 # 📈 Integration einer Prozessgrafik pro Umlauf (z. B. Pegelverlauf, Dichteverlauf)
 from modul_prozessgrafik import zeige_prozessgrafik_tab
 
+from modul_polygon_auswertung import berechne_punkte_und_zeit
+
 #==============================================================================================================================
 # 🔵 Start der Streamlit App
 #==============================================================================================================================
@@ -1436,7 +1438,8 @@ if uploaded_files:
                 
                
 
-                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen)
+                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
+
 
                 
                 # ----------------------------------------------------------------------------------------------------------------------
@@ -1516,7 +1519,10 @@ if uploaded_files:
 
         with tab6:
            
-            zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen)
+           
+           
+           
+            zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
             st.markdown("---")
             # ⚙️ Statuszeiten
             #st.markdown("### Statuszeiten im Umlauf")
@@ -1532,6 +1538,16 @@ if uploaded_files:
             #st.markdown("### Baggerwerte")
             zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
 
+
+            with st.expander("📊 Verweilzeiten pro Polygon"):
+                df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
+                df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
+            
+                st.write("**Baggerzeiten pro Feld (Status 2):**")
+                st.dataframe(df_bagger)
+            
+                st.write("**Verbringzeiten pro Feld (Status 4):**")
+                st.dataframe(df_verbring)
 
        
 
