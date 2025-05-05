@@ -1,67 +1,96 @@
-#==============================================================================================================================
-# 🔵 Imports und Hilfsfunktionen
-#==============================================================================================================================
+# ==============================================================================================================================
+# 🔵 IMPORTS & HILFSFUNKTIONEN
+# Dieses Modul importiert alle zentralen Abhängigkeiten – sowohl Standardbibliotheken, externe Pakete als auch eigene Module.
+# Die Einteilung erfolgt thematisch: Basisfunktionen, Visualisierung, Geodatenverarbeitung und modulare Analyseschritte.
+# ==============================================================================================================================
 
-# === 🔧 Basis-Module ===
-import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz, etc.)
-import json            # Einlesen und Schreiben von JSON-Dateien (z. B. Konfigurationen oder Schiffsdaten)
-import pandas as pd    # Zentrale Bibliothek für tabellarische Datenverarbeitung
-import numpy as np     # Für numerische Operationen (z. B. Mittelwert, Maskierung, NaN-Erkennung)
-import pytz            # Zeitzonenmanagement – für korrekte Darstellung und Umrechnung von Zeitstempeln
-import traceback       # Fehlerverfolgung und Debugging bei komplexen Ausnahmen
+# === 🔧 BASIS-MODULE (Standardbibliothek & Basisdatenverarbeitung) ===
+import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz etc.)
+import json            # Verarbeitung von JSON-Dateien (z. B. Laden von Konfigurationsdaten oder Schiffseinstellungen)
+import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern, Gruppieren, Zeitreihen)
+import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
+import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
+import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
 
-# === 📊 Visualisierung & UI ===
-import streamlit as st               # Streamlit steuert die gesamte Benutzeroberfläche des Dashboards
-import plotly.graph_objects as go    # Für interaktive Visualisierungen (z. B. Zeitreihen von Pegel, Dichte etc.)
+# === 📊 UI & VISUALISIERUNG ===
+import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
+import plotly.graph_objects as go    # Interaktive Diagramme (z. B. Zeitreihen, Karten, Tooltips)
 
-# === 🌍 Geodaten & Geometrie ===
-from shapely.geometry import Point   # Zur Erstellung und Prüfung geometrischer Punkte (z. B. „liegt in Polygon?“)
+# === 🌍 GEODATEN & GEOMETRIE ===
+from shapely.geometry import Point   # Geometrische Abfragen, z. B. Punkt-in-Polygon-Prüfungen
 
-# === 🧩 Eigene Module (Funktionsbausteine) ===
-# Diese modularen Python-Dateien bündeln thematisch zusammengehörige Funktionen und machen den Code wartbar.
 
-# 🟡 MoNa-Datenimport und Berechnung von TDS-Parametern (z. B. Dichte, Volumen, Konzentration)
+# === 🧩 EIGENE MODULE (Modularisierte Funktionsbausteine für einzelne Analyseschritte) ===
+
+# 🟡 Import und Berechnung technischer TDS-Parameter (z. B. Volumen, Masse, Konzentration)
 from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 
-# 🟦 Zeitbasierte Segmentierung der Fahrt in einzelne Umläufe
+# 🟦 Segmentierung der Fahrtdaten in einzelne Umläufe (Statuslogik)
 from modul_umlaeufe import nummeriere_umlaeufe, extrahiere_umlauf_startzeiten
 
-# ⚓ Automatische Erkennung der aktiven Baggerseite (Backbord/Steuerbord)
+# ⚓ Erkennung der aktiven Baggerseite (Backbord/Steuerbord oder beide)
 from modul_baggerseite import erkenne_baggerseite
 
-# 🌐 Koordinatensystem-Analyse (z. B. zur korrekten Geo-Referenzierung bei EPSG-Codes)
+# 🌐 Automatische EPSG-Code-Erkennung (für korrekte Geo-Referenzierung)
 from modul_koordinatenerkennung import erkenne_koordinatensystem
 
-# 📥 Import der Baggerfeld-Definitionen (Polygone mit Solltiefe) aus XML
+# 📥 XML-Import von Baggerfeld-Definitionen (Polygone mit Solltiefe)
 from modul_baggerfelder_xml_import import parse_baggerfelder
 
-# 📏 Berechnung der Solltiefe je Punkt im Track – abhängig von Polygon oder Defaultwert
+# 📏 Berechnung von Solltiefen entlang des Tracks (basierend auf Polygonzuordnung)
 from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 
-# 🚢 Streckenberechnung für alle Fahrtabschnitte (Leerfahrt, Baggern, Verbringen etc.)
+# 🚢 Streckenberechnung nach Status (Leerfahrt, Baggerfahrt, Verbringen)
 from modul_strecken import berechne_strecken
 
-# 📊 Kennzahlenberechnung pro Umlauf (z. B. Verdrängung, Ladevolumen, Baggerzeit)
+# 📊 Kennzahlen je Umlauf berechnen (z. B. Verdrängung, Ladevolumen, Konzentration)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
-# 🎯 Start-End-Strategien zur Extraktion spezifischer Zeitpunkte (z. B. min/max in Zeitfenstern)
+# 🎯 Strategie zur Erkennung geeigneter Start- und Endzeitpunkte (z. B. min/max, Plateaus)
 from modul_startend_strategie import berechne_start_endwerte
 
-# 🧰 Sammlung häufig genutzter Hilfsfunktionen (z. B. Zeitformatierung, Einheitenanzeige)
+# 🧰 Allgemeine Hilfsfunktionen (z. B. Zeitumrechnung, Formatierung, Spaltenwahl)
 from modul_hilfsfunktionen import (
-    split_by_gap, convert_timestamp, format_time, plot_x,
-    lade_schiffsparameter, pruefe_werte_gegen_schiffsparameter, format_de,
-    to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_dauer,
-    sichere_dauer, sichere_zeit, get_spaltenname
+    split_by_gap,                     # Segmentierung bei Zeitlücken
+    convert_timestamp,                # Zeitzonenbewusste Umrechnung von Timestamps
+    format_time, format_de,           # Formatierung von Zahlen und Uhrzeiten
+    plot_x,                           # Zeitachse für Plotly
+    lade_schiffsparameter,            # Laden schiffsspezifischer Parameter (z. B. TDS)
+    pruefe_werte_gegen_schiffsparameter,  # Plausibilitätsprüfung
+    to_hhmmss, to_dezimalstunden, to_dezimalminuten,  # Zeitformat-Konvertierung
+    format_dauer, sichere_dauer, sichere_zeit,        # Sichere Berechnung von Zeitdifferenzen
+    get_spaltenname                  # Dynamischer Zugriff auf BB/SB-Spalten
 )
 
-# 🪟 Streamlit-UI-Komponenten zur Anzeige von Panels (Kennzahlen, Strecken, Statuszeiten etc.)
-from modul_ui_panels import zeige_statuszeiten_panels, zeige_baggerwerte_panels, zeige_strecken_panels, zeige_bagger_und_verbringfelder
+# === 🪟 STREAMLIT UI-PANELS (zur Visualisierung von Kennzahlen, Strecken, Baggerfeldern etc.) ===
+from modul_ui_panels import (
+    zeige_statuszeiten_panels,         # Zeitliche Aufschlüsselung pro Status
+    zeige_baggerwerte_panels,          # Volumen, Masse, Konzentration, etc.
+    zeige_strecken_panels,             # Darstellung der zurückgelegten Strecken
+    zeige_bagger_und_verbringfelder,   # Interaktive Anzeige der betroffenen Polygone
+    zeige_statuszeiten_panels_mit_strecke,
+    panel_template, strecken_panel_template, dichte_panel_template, feld_panel_template, status_panel_template_mit_strecke
+)
 
-# 📈 Integration einer Prozessgrafik pro Umlauf (z. B. Pegelverlauf, Dichteverlauf)
-from modul_prozessgrafik import zeige_prozessgrafik_tab
+# === 📈 Interaktive Zeitreihengrafiken (Prozessdaten über gesamten Umlauf)
+from modul_prozessgrafik import zeige_prozessgrafik_tab, zeige_baggerkopftiefe_grafik
 
+# 🔄 Polygonbasierte Auswertungen (z. B. Aufenthaltsdauer je Feld)
 from modul_polygon_auswertung import berechne_punkte_und_zeit
+
+# 🧮 Komplexe Auswertung pro Umlauf (TDS-Berechnung, Kennzahlen, Strecken etc.)
+from modul_berechnungen import berechne_umlauf_auswertung
+
+# 🗂️ Tabellen für alle Umläufe + Zeit-Summen pro Status
+from modul_umlauftabelle import (
+    show_gesamtzeiten_dynamisch,
+    erstelle_umlauftabelle,
+    berechne_gesamtzeiten
+)
+
+# 🗺️ Darstellung der Tracks + Polygone auf interaktiven Karten
+from modul_karten import plot_karte, zeige_umlauf_info_karte
+
 
 #==============================================================================================================================
 # 🔵 Start der Streamlit App
@@ -466,6 +495,20 @@ if uploaded_files:
         **Baggerseite:** {seite}  
         **Solltiefe:** {anzeige_solltiefe}{anzeige_m} ({solltiefe_herkunft})
         """)
+        # ------------------------------------------------------------------------------------------------------------------
+        # 🎨 HTML-Styling für KPI-Panels
+        # ------------------------------------------------------------------------------------------------------------------
+        st.markdown("""
+        <style>
+            .big-num {font-size: 2.5rem; font-weight: bold;}
+            .panel {background: #f4f8fc; border-radius: 16px; padding: 20px; margin-bottom: 1.5rem;}
+            .caption {font-size: 1rem; color: #555;}
+            .highlight {font-weight: bold; font-size: 1.2rem; color: #0353a4;}
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # 👉 Auswahlzeile vorbereiten, falls ein einzelner Umlauf gewählt ist
+        zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
 
 #==============================================================================================================================
 # 🔵 Tabs definieren
@@ -482,314 +525,77 @@ if uploaded_files:
         ])
 
 #==============================================================================================================================
-# Tab - Übersichtskarten 
+# Tab 1 - Übersichtskarten 
 #==============================================================================================================================
 
+
+        from pyproj import Transformer
+        
         with tab1:
-        
-            from pyproj import Transformer  # Importiere Koordinatentransformation
-        
-            # --- 1. Aufbau der Umlauf-Info-Tabelle über der Karte ---
-            if umlauf_auswahl != "Alle":
-                if zeile.empty:
-                    # Falls der ausgewählte Umlauf unvollständig ist (z.B. fehlender Abschlussstatus)
-                    st.warning("⚠️ Kein vollständiger Umlauf: Der ausgewählte Umlauf ist unvollständig (endet z. B. nicht mit Status 4, 5 oder 6). "
-                               "Es werden trotzdem alle Rohdaten und Karten angezeigt.")
-                else:
-                    try:
-                        # Zeile für den ausgewählten Umlauf laden
-                        row = zeile.iloc[0]
-        
-                        # Start-/Endzeiten der verschiedenen Phasen (Leerfahrt, Baggern, Vollfahrt, Verbringen)
-                        phase_keys = [
-                            ("Start Leerfahrt", "anzeige_start_leerfahrt"),
-                            ("Start Baggern", "anzeige_start_baggern"),
-                            ("Start Vollfahrt", "anzeige_start_vollfahrt"),
-                            ("Start Verklappen/Pump/Rainbow", "anzeige_start_verklapp"),
-                            ("Ende", "anzeige_ende_umlauf")
-                        ]
-                        phase_times = {}
-                        for key, out in phase_keys:
-                            t = row.get(key, None)
-                            phase_times[out] = convert_timestamp(pd.Timestamp(t) if t is not None else None, zeitzone) if t is not None else None
-        
-                        # Prüfen, ob überhaupt ein vollständiger Zeitbereich existiert
-                        if phase_times["anzeige_start_leerfahrt"] is None or phase_times["anzeige_ende_umlauf"] is None:
-                            st.warning("⚠️ Kein vollständiger Umlauf: Beginn oder Ende fehlt (kein Status 1 oder 4/5/6 erkannt).")
-                        else:
-                            # Filtere das DataFrame auf den gewählten Umlauf-Zeitraum
-                            df = df[(df["timestamp"] >= phase_times["anzeige_start_leerfahrt"]) & 
-                                    (df["timestamp"] <= phase_times["anzeige_ende_umlauf"])]
-        
-                            # Berechnung der Dauer für jede Phase
-                            dauer_leerfahrt = (phase_times["anzeige_start_baggern"] - phase_times["anzeige_start_leerfahrt"]) if phase_times["anzeige_start_baggern"] else None
-                            dauer_baggern = (phase_times["anzeige_start_vollfahrt"] - phase_times["anzeige_start_baggern"]) if phase_times["anzeige_start_baggern"] and phase_times["anzeige_start_vollfahrt"] else None
-                            dauer_vollfahrt = (phase_times["anzeige_start_verklapp"] - phase_times["anzeige_start_vollfahrt"]) if phase_times["anzeige_start_vollfahrt"] and phase_times["anzeige_start_verklapp"] else None
-                            dauer_verklapp = (phase_times["anzeige_ende_umlauf"] - phase_times["anzeige_start_verklapp"]) if phase_times["anzeige_start_verklapp"] and phase_times["anzeige_ende_umlauf"] else None
-                            dauer_umlauf = (phase_times["anzeige_ende_umlauf"] - phase_times["anzeige_start_leerfahrt"]) if phase_times["anzeige_ende_umlauf"] else None
-        
-                            # Formatierte Anzeige der Dauern
-                            dauer_leerfahrt_disp = format_dauer(dauer_leerfahrt)
-                            dauer_baggern_disp = format_dauer(dauer_baggern)
-                            dauer_vollfahrt_disp = format_dauer(dauer_vollfahrt)
-                            dauer_verbringen_disp = format_dauer(dauer_verklapp)
-                            dauer_umlauf_disp = format_dauer(dauer_umlauf)
-        
-                            # Erstellung der Tabellenstruktur (mit MultiIndex für saubere Spaltenüberschriften)
-                            columns = pd.MultiIndex.from_tuples([
-                                ("Umlauf", "Nr."),
-                                ("Datum", ""),
-                                ("Leerfahrt", "Beginn"), ("Leerfahrt", "Dauer"),
-                                ("Baggern", "Beginn"), ("Baggern", "Dauer"),
-                                ("Vollfahrt", "Beginn"), ("Vollfahrt", "Dauer"),
-                                ("Verklappen", "Beginn"), ("Verklappen", "Dauer"),
-                                ("Umlauf", "Ende"), ("Umlauf", "Dauer")
-                            ])
-        
-                            # Einfügen der Werte in die Tabelle
-                            data = [[
-                                row.get("Umlauf", "-"),
-                                phase_times["anzeige_start_leerfahrt"].strftime("%d.%m.%Y") if phase_times["anzeige_start_leerfahrt"] else "-",
-                                phase_times["anzeige_start_leerfahrt"].strftime("%H:%M:%S") if phase_times["anzeige_start_leerfahrt"] else "-",
-                                format_dauer(dauer_leerfahrt),
-                                phase_times["anzeige_start_baggern"].strftime("%H:%M:%S") if phase_times["anzeige_start_baggern"] else "-",
-                                format_dauer(dauer_baggern),
-                                phase_times["anzeige_start_vollfahrt"].strftime("%H:%M:%S") if phase_times["anzeige_start_vollfahrt"] else "-",
-                                format_dauer(dauer_vollfahrt),
-                                phase_times["anzeige_start_verklapp"].strftime("%H:%M:%S") if phase_times["anzeige_start_verklapp"] else "-",
-                                format_dauer(dauer_verklapp),
-                                phase_times["anzeige_ende_umlauf"].strftime("%H:%M:%S") if phase_times["anzeige_ende_umlauf"] else "-",
-                                format_dauer(dauer_umlauf)
-                            ]]
-                            df_summary = pd.DataFrame(data, columns=columns)
-        
-                            # Anzeige der Tabelle
-                            st.dataframe(df_summary, use_container_width=True, hide_index=True)
-        
-                    except Exception as e:
-                        # Fehlerbehandlung
-                        st.warning("⚠️ Der gewählte Umlauf ist unvollständig oder fehlerhaft.")
-                        st.info(f"(Details: {e})")
-            
-            # --- 2. Aufteilung der Kartenanzeige in zwei Spalten ---
-            col1, col2 = st.columns(2)
-        
-            # Transformer: Koordinatensystem von UTM (o.ä.) nach WGS84 (EPSG:4326) vorbereiten
             transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
-
-
-
-
-
-    # -------------------------------------------------------------------------------------------------------------------------
-    # Definition der Kartenfunktion - linke und rechte Karte basieren auf gleicher Logik
-    # -------------------------------------------------------------------------------------------------------------------------
-            
-            # Wähle Suffix für Zeitangaben je nach Zeitzone
-            zeit_suffix = "UTC" if zeitzone == "UTC" else "Lokal"
-            
-            def plot_karte(
-                df,                # Eingabe-DataFrame
-                transformer,       # Koordinatentransformation (z.B. UTM -> WGS84)
-                seite,             # Baggerseite (BB / SB / BB+SB)
-                status2_label,     # Bezeichnung für Status 2 im Plot
-                tiefe_spalte,      # Spaltenname für Tiefenanzeige
-                mapbox_center,     # Start-Mittelpunkt der Karte
-                focus_trace=None   # Optional: zusätzlichen Marker einfügen
-            ):
-                import plotly.graph_objects as go
-                
-                fig = go.Figure()  # Neues leeres Plotly-Mapbox-Objekt
-                
-                # --- Tooltip für Status 2 (zeigt Zeit + Tiefe) ---
-                def tooltip_text(row):
-                    ts = convert_timestamp(row["timestamp"], zeitzone)
-                    zeit = ts.strftime("%d.%m.%Y %H:%M:%S") if ts else "-"
-                    tiefe = row.get(tiefe_spalte)
-                    tooltip = f"🕒 {zeit} ({zeit_suffix})"
-                    if pd.notnull(tiefe):
-                        tooltip += f"<br>📉 Tiefe: {tiefe:.2f} m"
-                    return tooltip
-            
-                # --- Tooltip für Status 1, 3, 4, 5, 6 (zeigt Zeit + Geschwindigkeit) ---
-                def tooltip_status1_3(row):
-                    ts = convert_timestamp(row["timestamp"], zeitzone)
-                    zeit = ts.strftime("%d.%m.%Y %H:%M:%S") if ts else "-"
-                    tooltip = f"🕒 {zeit} ({zeit_suffix})"
-                    geschw = row.get("Geschwindigkeit", None)
-                    if pd.notnull(geschw):
-                        tooltip += f"<br>🚤 Geschwindigkeit: {geschw:.1f} kn"
-                    return tooltip
-            
-                # -------------------------------------------------------------------------------------------------------------------------
-                # Darstellung der verschiedenen Statusbereiche:
-                # -------------------------------------------------------------------------------------------------------------------------
-            
-                # --- Status 1: Leerfahrt (RW_Schiff / HW_Schiff) ---
-                df_status1 = df[df["Status"] == 1].dropna(subset=["RW_Schiff", "HW_Schiff"])
-                df_status1 = split_by_gap(df_status1)
-                for seg_id, segment_df in df_status1.groupby("segment"):
-                    coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
-                    lons, lats = zip(*coords)
-                    tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-                    fig.add_trace(go.Scattermapbox(
-                        lon=lons, lat=lats, mode='lines',
-                        marker=dict(size=4, color='rgba(150, 150, 150, 0.7)'),
-                        line=dict(width=1, color='rgba(150, 150, 150, 0.7)'),
-                        text=tooltips, hoverinfo='text',
-                        name='Status 1 (Leerfahrt)' if seg_id == 0 else None,
-                        showlegend=(seg_id == 0), legendgroup="status1"
-                    ))
-            
-                # --- Status 2: Baggern (RW_BB/HW_BB oder RW_SB/HW_SB je nach Seite) ---
-                df_status2 = df[df["Status"] == 2]
-                df_status2 = split_by_gap(df_status2)
-            
-                for seg_id, segment_df in df_status2.groupby("segment"):
-                    # Backbord (BB)
-                    if seite in ["BB", "BB+SB"]:
-                        df_status2_bb = segment_df.dropna(subset=["RW_BB", "HW_BB"])
-                        if not df_status2_bb.empty:
-                            coords_bb = df_status2_bb.apply(lambda row: transformer.transform(row["RW_BB"], row["HW_BB"]), axis=1)
-                            lons_bb, lats_bb = zip(*coords_bb)
-                            tooltips_bb = df_status2_bb.apply(tooltip_text, axis=1)
-                            fig.add_trace(go.Scattermapbox(
-                                lon=lons_bb, lat=lats_bb, mode='lines+markers',
-                                marker=dict(size=6, color='rgba(0, 102, 204, 0.8)'),
-                                line=dict(width=2, color='rgba(0, 102, 204, 0.8)'),
-                                text=tooltips_bb, hoverinfo='text',
-                                name="Status 2 (Baggern, BB)" if seg_id == 0 else None,
-                                showlegend=(seg_id == 0), legendgroup="status2bb"
-                            ))
-                    # Steuerbord (SB)
-                    if seite in ["SB", "BB+SB"]:
-                        df_status2_sb = segment_df.dropna(subset=["RW_SB", "HW_SB"])
-                        if not df_status2_sb.empty:
-                            coords_sb = df_status2_sb.apply(lambda row: transformer.transform(row["RW_SB"], row["HW_SB"]), axis=1)
-                            lons_sb, lats_sb = zip(*coords_sb)
-                            tooltips_sb = df_status2_sb.apply(tooltip_text, axis=1)
-                            fig.add_trace(go.Scattermapbox(
-                                lon=lons_sb, lat=lats_sb, mode='lines+markers',
-                                marker=dict(size=6, color='rgba(0, 204, 102, 0.8)'),
-                                line=dict(width=2, color='rgba(0, 204, 102, 0.8)'),
-                                text=tooltips_sb, hoverinfo='text',
-                                name="Status 2 (Baggern, SB)" if seg_id == 0 else None,
-                                showlegend=(seg_id == 0), legendgroup="status2sb"
-                            ))
-            
-                # --- Status 3: Vollfahrt (RW_Schiff / HW_Schiff) ---
-                df_status3 = df[df["Status"] == 3].dropna(subset=["RW_Schiff", "HW_Schiff"])
-                df_status3 = split_by_gap(df_status3)
-                for seg_id, segment_df in df_status3.groupby("segment"):
-                    coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
-                    lons, lats = zip(*coords)
-                    tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-                    fig.add_trace(go.Scattermapbox(
-                        lon=lons, lat=lats, mode='lines',
-                        marker=dict(size=5, color='rgba(0, 153, 76, 0.8)'),
-                        line=dict(width=1, color='rgba(0, 153, 76, 0.8)'),
-                        text=tooltips, hoverinfo='text',
-                        name='Status 3 (Vollfahrt)' if seg_id == 0 else None,
-                        showlegend=(seg_id == 0), legendgroup="status3"
-                    ))
-            
-                # --- Status 4/5/6: Verbringen (RW_Schiff / HW_Schiff) ---
-                df_456 = df[df["Status"].isin([4, 5, 6])].dropna(subset=["RW_Schiff", "HW_Schiff"])
-                df_456 = split_by_gap(df_456)
-                for seg_id, segment_df in df_456.groupby("segment"):
-                    coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
-                    lons, lats = zip(*coords)
-                    tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-                    fig.add_trace(go.Scattermapbox(
-                        lon=lons, lat=lats, mode='lines+markers',
-                        marker=dict(size=6, color='rgba(255, 140, 0, 0.8)'),
-                        line=dict(width=2, color='rgba(255, 140, 0, 0.8)'),
-                        text=tooltips, hoverinfo='text',
-                        name='Status 4/5/6 (Verbringen)' if seg_id == 0 else None,
-                        showlegend=(seg_id == 0), legendgroup="status456"
-                    ))
-            
-                # --- Baggerfelder (Polygone) darstellen ---
-                if baggerfelder:
-                    for idx, feld in enumerate(baggerfelder):
-                        coords = list(feld["polygon"].exterior.coords)
-                        lons, lats = zip(*coords)
-                        tooltip = f"{feld['name']}<br>Solltiefe: {feld['solltiefe']} m"
-                        
-                        # Polygon-Umriss und Fläche
-                        fig.add_trace(go.Scattermapbox(
-                            lon=lons,
-                            lat=lats,
-                            mode="lines+markers",
-                            fill="toself",
-                            fillcolor="rgba(50, 90, 150, 0.2)",
-                            line=dict(color="rgba(30, 60, 120, 0.8)", width=2),
-                            marker=dict(size=3, color="rgba(30, 60, 120, 0.8)"),
-                            name="Baggerfelder" if idx == 0 else None,
-                            legendgroup="baggerfelder",
-                            showlegend=(idx == 0),
-                            visible=True,
-                            text=[tooltip] * len(lons),
-                            hoverinfo="text"
-                        ))
-                        
-                        # Unsichtbarer Marker im Mittelpunkt für Tooltip
-                        centroid = feld["polygon"].centroid
-                        lon_c, lat_c = centroid.x, centroid.y
-                        fig.add_trace(go.Scattermapbox(
-                            lon=[lon_c],
-                            lat=[lat_c],
-                            mode="markers",
-                            marker=dict(size=1, color="rgba(0,0,0,0)"),
-                            text=[tooltip],
-                            hoverinfo="text",
-                            showlegend=False
-                        ))
-            
-                # Optional: Zusätzlicher Fokus-Trace einfügen (z.B. Marker für aktuellen Punkt)
-                if focus_trace:
-                    fig.add_trace(focus_trace)
-            
-                # --- Layout der Karte anpassen ---
-                fig.update_layout(
-                    mapbox_style="open-street-map",
-                    mapbox_zoom=12,
-                    mapbox_center=mapbox_center,
-                    height=700,
-                    margin=dict(r=0, l=0, t=0, b=0),
-                    legend=dict(
-                        x=0.01, y=0.99,
-                        bgcolor="rgba(255,255,255,0.8)",
-                        bordercolor="gray",
-                        borderwidth=1
+        
+            if umlauf_auswahl != "Alle":
+                zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
+        
+                if not zeile.empty:
+                    row = zeile.iloc[0]
+        
+                    # 👇 Nur ein einziger Aufruf hier!
+                    df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
+        
+                    # Kennzahlen, Strecken etc. berechnen
+                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                        df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
-                )
-            
-                return fig, df_status2, df_456
+        
+                    # Panels und Felder
+                    #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
+                    #st.markdown("---")
+                    
+                    zeige_bagger_und_verbringfelder(
+                        bagger_namen=bagger_namen,
+                        verbring_namen=verbring_namen,
+                        df=df,
+                        baggerfelder=baggerfelder  # ❗️wichtig!
+                    )
+
+                    
+                    #zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
+                    
+                    #st.markdown("---")        
+            # Kartenansicht vorbereiten
+            zeit_suffix = "UTC" if zeitzone == "UTC" else "Lokal"
+            col1, col2 = st.columns(2)
 
 
-
-    # -------------------------------------------------------------------------------------------------------------------------
-    # Darstellung der Kartenansichten in zwei Spalten (links = Baggern, rechts = Verbringen)
-    # -------------------------------------------------------------------------------------------------------------------------
+                
     
+        # -------------------------------------------------------------------------------------------------------------------------
+        # Darstellung der Kartenansichten in zwei Spalten (links = Baggern, rechts = Verbringen)
+        # -------------------------------------------------------------------------------------------------------------------------
+        
             # -------------------------------------------------------------------------------------------------------------------------
             # Linke Karte: Darstellung der Baggerstelle (Status 2)
             # -------------------------------------------------------------------------------------------------------------------------
             with col1:
                 # Karte für Status 2 (Baggern) erstellen
+
                 fig, df_status2, df_456 = plot_karte(
                     df=df,
                     transformer=transformer,
                     seite=seite,
-                    status2_label="Status 2 (Baggern)",                     # Bezeichnung im Legendeneintrag
-                    tiefe_spalte="Abs_Tiefe_Kopf_BB" if seite in ["BB", "BB+SB"] else "Abs_Tiefe_Kopf_SB",  # Wahl der Tiefenspalte
-                    mapbox_center={"lat": 53.5, "lon": 8.2}                  # Grobe Anfangszentrierung
+                    status2_label="Status 2 (Baggern)",
+                    tiefe_spalte="Abs_Tiefe_Kopf_BB" if seite in ["BB", "BB+SB"] else "Abs_Tiefe_Kopf_SB",
+                    mapbox_center={"lat": 53.5, "lon": 8.2},
+                    zeitzone=zeitzone,
+                    zeit_suffix=zeit_suffix,
+                    baggerfelder=baggerfelder
                 )
-            
                 # Wenn Status 2-Daten vorhanden sind → Zoome auf den ersten Punkt
                 if not df_status2.empty:
                     first_latlon = transformer.transform(df_status2.iloc[0]["RW_Schiff"], df_status2.iloc[0]["HW_Schiff"])
+                    last_latlon = transformer.transform(df_456.iloc[-1]["RW_Schiff"], df_456.iloc[-1]["HW_Schiff"])
+
                     fig.update_layout(
                         mapbox_center={"lat": first_latlon[1], "lon": first_latlon[0]},
                         mapbox_zoom=13
@@ -798,7 +604,7 @@ if uploaded_files:
                     st.info("Keine Daten mit Status 2 verfügbar.")
             
                 # Überschrift und Karte darstellen
-                st.markdown("#### Baggerstelle")
+                #st.markdown("#### Baggerstelle")
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
             
             
@@ -811,23 +617,26 @@ if uploaded_files:
                     df=df,
                     transformer=transformer,
                     seite=seite,
-                    status2_label="Status 2 (Verbringen)",                    # Bezeichnung hier auf Verbringen gesetzt
-                    tiefe_spalte="Abs_Tiefe_Verbring",                        # Spalte für Verbringtiefe
-                    mapbox_center={"lat": 53.6, "lon": 8.3}                   # Grobe Anfangszentrierung
+                    status2_label="Status 2 (Baggern)",
+                    tiefe_spalte="Abs_Tiefe_Kopf_BB" if seite in ["BB", "BB+SB"] else "Abs_Tiefe_Kopf_SB",
+                    mapbox_center={"lat": 53.5, "lon": 8.2},
+                    zeitzone=zeitzone,
+                    zeit_suffix=zeit_suffix,
+                    baggerfelder=baggerfelder
                 )
-            
                 # Wenn Status 4/5/6-Daten vorhanden sind → Zoome auf den ersten Punkt
                 if not df_456.empty:
                     first_latlon = transformer.transform(df_456.iloc[0]["RW_Schiff"], df_456.iloc[0]["HW_Schiff"])
+                    last_latlon = transformer.transform(df_456.iloc[-1]["RW_Schiff"], df_456.iloc[-1]["HW_Schiff"])
                     fig.update_layout(
-                        mapbox_center={"lat": first_latlon[1], "lon": first_latlon[0]},
+                        mapbox_center={"lat": last_latlon[1], "lon": last_latlon[0]},
                         mapbox_zoom=13
                     )
                 else:
                     st.info("Keine Daten mit Status 4, 5 oder 6 verfügbar.")
             
                 # Überschrift und Karte darstellen
-                st.markdown("#### Verbringstelle")
+                #st.markdown("#### Verbringstelle")
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
 
@@ -837,596 +646,68 @@ if uploaded_files:
 #==============================================================================================================================
         
         with tab2:
-            st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
             
             # Nur anzeigen, wenn ein einzelner Umlauf ausgewählt ist
             if umlauf_auswahl != "Alle" and row is not None:
+                st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
                 zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
 
 
             else:
-                st.info("Bitte einen einzelnen Umlauf auswählen, um das Prozessdiagramm zu sehen.")
-
-        
-            
-#==============================================================================================================================
-# Tab 3 - Diagramm Tiefe Baggerkopf 
-#==============================================================================================================================
-            
+                st.info("Bitte einen konkreten Umlauf auswählen.")
 
 # ==============================================================================================================================
 # Tab 3 - Diagramm Tiefe Baggerkopf (Modularisiert)
 # ==============================================================================================================================
-        
+       
         with tab3:
-       
-            df_plot = df.copy().sort_values("timestamp").reset_index(drop=True)
-        
-            kurven_abs_tiefe = [
-                {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "dicke": 2, "dash": None},
-                {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "dicke": 2, "dash": "dash"},
-            ]
-        
-            fig2 = go.Figure()
-        
-            def get_spaltenname(base, seite):
-                if base.endswith("_") and seite in ["BB", "SB"]:
-                    return base + seite
-                elif base.endswith("_") and seite == "BB+SB":
-                    return [base + "BB", base + "SB"]
-                return base
-        
-            for k in kurven_abs_tiefe:
-                spalten = get_spaltenname(k["spaltenname"], seite)
-                farbe = k["farbe"]
-                label = k["label"]
-        
-                if spalten is None:
-                    continue
-        
-                if isinstance(spalten, list):
-                    for s in spalten:
-                        if s not in df_plot.columns:
-                            continue
-        
-                        status_mask = df_plot["Status"] == 2
-                        df_filtered = df_plot.loc[status_mask, ["timestamp", s]].copy()
-                        df_filtered = df_filtered.sort_values("timestamp").reset_index(drop=True)
-                        df_filtered = split_by_gap(df_filtered, max_gap_minutes=2)
-        
-                        for seg_id, seg in df_filtered.groupby("segment"):
-                            y = pd.to_numeric(seg[s], errors="coerce")
-                            x = seg["timestamp"]
-                            if y.empty or pd.isna(y.max()):
-                                continue
-                            fig2.add_trace(go.Scatter(
-                                x=x,
-                                y=y,
-                                mode="lines",
-                                name=f"{label} ({s[-2:]})" if seg_id == 0 else None,
-                                customdata=pd.DataFrame({"original": y}),
-                                hovertemplate=f"{label} ({s[-2:]}): %{{customdata[0]:.2f}}<extra></extra>",
-                                line=dict(color=farbe, width=k.get("dicke", 2), dash=k.get("dash", None)),
-                                visible=True,
-                                connectgaps=False,
-                                showlegend=(seg_id == 0),
-                            ))
-                else:
-                    if spalten not in df_plot.columns:
-                        continue
-        
-                    status_mask = df_plot["Status"] == 2
-                    df_filtered = df_plot.loc[status_mask, ["timestamp", spalten]].copy()
-                    df_filtered = df_filtered.sort_values("timestamp").reset_index(drop=True)
-                    df_filtered = split_by_gap(df_filtered, max_gap_minutes=2)
-        
-                    for seg_id, seg in df_filtered.groupby("segment"):
-                        y = pd.to_numeric(seg[spalten], errors="coerce")
-                        x = plot_x(seg, [True] * len(seg), zeitzone)
-                        if y.empty or pd.isna(y.max()):
-                            continue
-                        fig2.add_trace(go.Scatter(
-                            x=x,
-                            y=y,
-                            mode="lines",
-                            name=label if seg_id == 0 else None,
-                            customdata=pd.DataFrame({"original": y}),
-                            hovertemplate=f"{label}: %{{customdata[0]:.2f}}<extra></extra>",
-                            line=dict(color=farbe, width=k.get("dicke", 2), dash=k.get("dash", None)),
-                            visible=True,
-                            connectgaps=False,
-                            showlegend=(seg_id == 0),
-                        ))
-        
-            # --- Dynamische Achsenskalierung ---
-            tiefe_col = get_spaltenname("Abs_Tiefe_Kopf_", seite)
-            if isinstance(tiefe_col, list):
-                vorhandene = [col for col in tiefe_col if col in df_plot.columns]
-                if vorhandene:
-                    df_plot["_tmp_tiefe_mittel"] = df_plot[vorhandene].mean(axis=1)
-                    tiefe_col = "_tmp_tiefe_mittel"
-                else:
-                    tiefe_col = tiefe_col[0]
-        
-            mask_tiefe = (df_plot["Status"] == 2) & df_plot[tiefe_col].notnull()
-            if mask_tiefe.sum() > 0:
-                tiefen = df_plot.loc[mask_tiefe, tiefe_col]
-                y_min = tiefen.min() - 2
-                y_max = tiefen.max() + 2
-            else:
-                y_min = -20
-                y_max = 0
-        
-            # --- Solltiefenkorridor (optional) ---
-            if {"Solltiefe_Aktuell", "Solltiefe_Oben", "Solltiefe_Unten"}.issubset(df_plot.columns):
-                status_mask = df_plot["Status"] == 2
-                x_corridor = plot_x(df_plot, status_mask, zeitzone)
-                y_oben = df_plot.loc[status_mask, "Solltiefe_Oben"]
-                y_unten = df_plot.loc[status_mask, "Solltiefe_Unten"]
-        
-                fig2.add_trace(go.Scatter(
-                    x=np.concatenate([x_corridor, x_corridor[::-1]]),
-                    y=np.concatenate([y_oben, y_unten[::-1]]),
-                    fill='toself',
-                    fillcolor='rgba(255,0,0,0.13)',
-                    line=dict(color='rgba(255,0,0,0)'),
-                    hoverinfo='skip',
-                    name='Toleranzbereich',
-                    showlegend=True,
-                ))
-        
-            # --- Layout & Anzeige ---
             st.markdown("#### Baggerkopftiefe")
-            fig2.update_layout(
-                height=500,
-                yaxis=dict(title="Tiefe [m]", range=[y_min, y_max], showgrid=True, gridcolor="lightgray"),
-                xaxis=dict(title="Zeit", type="date", showgrid=True, gridcolor="lightgray"),
-                hovermode="x unified",
-                showlegend=True,
-                legend=dict(orientation="v", x=1.02, y=1),
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-   
+            if umlauf_auswahl != "Alle":
+                zeige_baggerkopftiefe_grafik(df, zeitzone, seite)
         
+            else:
+                st.info("Bitte einen konkreten Umlauf auswählen.")
 
 #==============================================================================================================================
-# Tab - Umlauftabelle - gesamt 
+# Tab 4 - Umlauftabelle - gesamt 
 #==============================================================================================================================
-            
+ 
         with tab4:
-
-            def show_gesamtzeiten_dynamisch(
-                summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf, 
-                zeitformat="hh:mm:ss", title="Gesamtzeiten"
-            ):
-                """
-                Zeigt die Gesamtzeiten-Tabelle: 
-                - Erste Zeile im gewählten Zeitformat 
-                - Zweite Zeile immer in Dezimalstunden
-                """
-                # Mapping für das Zeitformat zur Funktion
-                format_mapper = {
-                    "hh:mm:ss": to_hhmmss,
-                    "dezimalminuten": to_dezimalminuten,
-                    "dezimalstunden": to_dezimalstunden,  # falls das gewählt werden kann
-                    # weitere Formate kannst Du ergänzen
-                }
-                
-                # Hole die passende Formatierungsfunktion (Fallback: to_hhmmss)
-                formatter = format_mapper.get(zeitformat, to_hhmmss)
-                
-                # Erste Zeile: Im gewählten Zeitformat
-                summen_format1 = [
-                    formatter(summe_leerfahrt),
-                    formatter(summe_baggern),
-                    formatter(summe_vollfahrt),
-                    formatter(summe_verklapp),
-                    formatter(summe_umlauf)
-                ]
-                # Zweite Zeile: immer in Dezimalstunden
-                summen_stunden = [
-                    to_dezimalstunden(summe_leerfahrt),
-                    to_dezimalstunden(summe_baggern),
-                    to_dezimalstunden(summe_vollfahrt),
-                    to_dezimalstunden(summe_verklapp),
-                    to_dezimalstunden(summe_umlauf)
-                ]
-                columns = ["Leerfahrt", "Baggern", "Vollfahrt", "Verklappen", "Umlauf"]
-                
-                gesamtzeiten_df = pd.DataFrame([summen_format1, summen_stunden], columns=columns)
-                
-                gesamtzeiten_df.index = ["", ""]
-                return gesamtzeiten_df
-       
-          # -------------------------         
-
-            # ---- Zusammenfassung für ALLE vollständigen Umläufe ----
             st.markdown("#### Auflistung aller Umläufe")
+        
             if not umlauf_info_df.empty:
-                columns = pd.MultiIndex.from_tuples([
-                    ("Umlauf", "Nr."),
-                    ("Datum", ""),
-                    ("Leerfahrt", "Beginn"), ("Leerfahrt", "Dauer"),
-                    ("Baggern", "Beginn"), ("Baggern", "Dauer"),
-                    ("Vollfahrt", "Beginn"), ("Vollfahrt", "Dauer"),
-                    ("Verklappen", "Beginn"), ("Verklappen", "Dauer"),
-                    ("Umlauf", "Ende"), ("Umlauf", "Dauer")
-                ])
-            
-                rows = []
-                # Summen-Listen anlegen
-                dauer_leerfahrt_list = []
-                dauer_baggern_list = []
-                dauer_vollfahrt_list = []
-                dauer_verklapp_list = []
-                dauer_umlauf_list = []
-            
-                for idx, row in umlauf_info_df.iterrows():
-                    def safe_ts(key):
-                        t = row.get(key, None)
-                        return convert_timestamp(pd.Timestamp(t) if pd.notnull(t) and t is not None else None, zeitzone) if t is not None else None
-            
-                    anzeige_start_leerfahrt = safe_ts("Start Leerfahrt")
-                    anzeige_start_baggern = safe_ts("Start Baggern")
-                    anzeige_start_vollfahrt = safe_ts("Start Vollfahrt")
-                    anzeige_start_verklapp = safe_ts("Start Verklappen/Pump/Rainbow")
-                    anzeige_ende_umlauf = safe_ts("Ende")
-            
-                    # Dauern berechnen (tz-aware!)
-                    dauer_leerfahrt = (anzeige_start_baggern - anzeige_start_leerfahrt) if anzeige_start_baggern and anzeige_start_leerfahrt else None
-                    dauer_baggern = (anzeige_start_vollfahrt - anzeige_start_baggern) if anzeige_start_vollfahrt and anzeige_start_baggern else None
-                    dauer_vollfahrt = (anzeige_start_verklapp - anzeige_start_vollfahrt) if anzeige_start_verklapp and anzeige_start_vollfahrt else None
-                    dauer_verklapp = (anzeige_ende_umlauf - anzeige_start_verklapp) if anzeige_ende_umlauf and anzeige_start_verklapp else None
-                    dauer_umlauf = (anzeige_ende_umlauf - anzeige_start_leerfahrt) if anzeige_ende_umlauf and anzeige_start_leerfahrt else None
-            
-                    # Summenlisten füllen
-                    if dauer_leerfahrt is not None:
-                        dauer_leerfahrt_list.append(dauer_leerfahrt)
-                    if dauer_baggern is not None:
-                        dauer_baggern_list.append(dauer_baggern)
-                    if dauer_vollfahrt is not None:
-                        dauer_vollfahrt_list.append(dauer_vollfahrt)
-                    if dauer_verklapp is not None:
-                        dauer_verklapp_list.append(dauer_verklapp)
-                    if dauer_umlauf is not None:
-                        dauer_umlauf_list.append(dauer_umlauf)
-            
-                    rows.append([
-                        row.get("Umlauf", "-"),
-                        anzeige_start_leerfahrt.strftime("%d.%m.%Y") if anzeige_start_leerfahrt else "-",
-                        anzeige_start_leerfahrt.strftime("%H:%M:%S") if anzeige_start_leerfahrt else "-",
-                        format_dauer(dauer_leerfahrt, zeitformat),
-                        anzeige_start_baggern.strftime("%H:%M:%S") if anzeige_start_baggern else "-",
-                        format_dauer(dauer_baggern, zeitformat),
-                        anzeige_start_vollfahrt.strftime("%H:%M:%S") if anzeige_start_vollfahrt else "-",
-                        format_dauer(dauer_vollfahrt, zeitformat),
-                        anzeige_start_verklapp.strftime("%H:%M:%S") if anzeige_start_verklapp else "-",
-                        format_dauer(dauer_verklapp, zeitformat),
-                        anzeige_ende_umlauf.strftime("%H:%M:%S") if anzeige_ende_umlauf else "-",
-                        format_dauer(dauer_umlauf, zeitformat)
-                    ])
-            
-                # Nach der Schleife: DataFrames erzeugen
-                df_alle_umlaeufe = pd.DataFrame(rows, columns=columns)
-            
-
-                # Nach der Schleife: DataFrames erzeugen
-                df_alle_umlaeufe = pd.DataFrame(rows, columns=columns)
-                
-                # Summen berechnen
-                summe_leerfahrt = sum(dauer_leerfahrt_list, pd.Timedelta(0))
-                summe_baggern = sum(dauer_baggern_list, pd.Timedelta(0))
-                summe_vollfahrt = sum(dauer_vollfahrt_list, pd.Timedelta(0))
-                summe_verklapp = sum(dauer_verklapp_list, pd.Timedelta(0))
-                summe_umlauf = sum(dauer_umlauf_list, pd.Timedelta(0))
-                
-                # *** HIER kommt der Funktionsaufruf für die Gesamtzeiten-Tabelle ***
-                # Hier wird der DataFrame erzeugt UND in der Variablen gespeichert!
-                gesamtzeiten_df = show_gesamtzeiten_dynamisch(
-                    summe_leerfahrt,
-                    summe_baggern,
-                    summe_vollfahrt,
-                    summe_verklapp,
-                    summe_umlauf,
-                    zeitformat=zeitformat,  # das ist die User-Auswahl!
-                    title="Gesamtzeiten"
+                df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
+                    umlauf_info_df, zeitzone, zeitformat
                 )
-
-                
-                # Danach wie gehabt:
-                st.dataframe(df_alle_umlaeufe, use_container_width=True, hide_index=True)
-
-            
-                # Anzeige
+        
+                gesamtzeiten = berechne_gesamtzeiten(list_leer, list_bagg, list_voll, list_verk, list_umlauf)
+                df_gesamt = show_gesamtzeiten_dynamisch(
+                    gesamtzeiten["leerfahrt"], gesamtzeiten["baggern"],
+                    gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
+                    gesamtzeiten["umlauf"], zeitformat=zeitformat
+                )
+        
+                st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
                 st.markdown("#### Aufsummierte Dauer")
-                st.dataframe(gesamtzeiten_df, use_container_width=True, hide_index=True)
-
-
+                st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
+        
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
 
-            
-       
 # ======================================================================================================================
 # TAB 5 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
 # ======================================================================================================================
-
-        # 💠 Allgemeines KPI-Panel – zeigt z. B. Umlaufdauer, Verdrängung, Volumen usw.
-        panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px 10px 16px;
-            margin-bottom: 1.2rem;
-            min-width: 210px;
-            min-height: 85px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
-            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
-                {value}
-            </div>
-            <div style="font-size:0.95rem; color:#4e6980; margin-top:3px;">
-                <span style="font-weight:600;">{change_label1}</span> {change_value1}<br>
-                <span style="font-weight:600;">{change_label2}</span> {change_value2}
-            </div>
-        </div>
-        """
-        
-        # 💠 Strecken-Panel – Darstellung von Phase + Strecke + Dauer (z. B. Leerfahrt)
-        strecken_panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px 10px 16px;
-            margin-bottom: 1.2rem;
-            min-width: 140px;
-            min-height: 65px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
-            <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
-                {value}
-            </div>
-            <div style="font-size:0.95rem; color:#4e6980; margin-top:3px;">
-                <span style="font-weight:500;">Dauer:</span> {dauer}
-            </div>
-        </div>
-        """
-        
-        # 💠 Spezielles Panel für Dichteparameter (Wasser, Feststoff, Ladung)
-        dichte_panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px;
-            margin-bottom: 1.2rem;
-            min-width: 200px;
-            min-height: 100px;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:6px;">{caption}</div>
-            <div style="font-size:0.95rem; color:#333;">
-                <strong>Wasser:</strong> {pw} t/m³<br>
-                <strong>Feststoff:</strong> {pf} t/m³<br>
-                <strong>Ladung:</strong> {pl} t/m³
-            </div>
-        </div>
-        """
-
-        feld_panel_template = """
-        <div style="
-            background:#f4f8fc;
-            border-radius: 16px;
-            padding: 14px 16px 10px 16px;
-            margin-bottom: 1.2rem;
-            min-height: 80px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        ">
-            <div style="font-size:1rem; color:#555; margin-bottom:6px;">{caption}</div>
-            <div style="font-size:1.05rem; color:#222; line-height:1.4;">
-                {content}
-            </div>
-        </div>
-        """
-
-
-        # ======================================================================================================================
-        # TAB 5 – Verarbeitung des ausgewählten Umlaufs
-        # ======================================================================================================================
         
         with tab5:
-            
-            
-            # 👉 Sicherstellen, dass ein Umlauf ausgewählt ist
-            if umlauf_auswahl == "Alle":
-                st.info("Bitte einen konkreten Umlauf auswählen, um die Detailauswertung anzuzeigen.")
-                st.stop()
-        
-            # 👉 Ausgewählte Umlauf-Zeile aus der Übersicht extrahieren
-            zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
-            if zeile.empty:
-                st.warning("Ausgewählter Umlauf konnte nicht gefunden werden.")
-                st.stop()
-        
-            row = zeile.iloc[0]
-        
-            if row is not None:
-                # ------------------------------------------------------------------------------------------------------------------
-                # 📅 Zeitliche Rahmenbedingungen für den Umlauf setzen
-                # ------------------------------------------------------------------------------------------------------------------
-                t_start = pd.to_datetime(row["Start Leerfahrt"])
-                t_ende = pd.to_datetime(row["Ende"])
-                if t_start.tzinfo is None:
-                    t_start = t_start.tz_localize("UTC")
-                if t_ende.tzinfo is None:
-                    t_ende = t_ende.tz_localize("UTC")
-                if df["timestamp"].dt.tz is None:
-                    df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
-        
-                # Daten auf den Zeitraum des Umlaufs filtern
-                df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-        
-                # Strategie für dieses Schiff laden
-                # Sicher den Schiffsnamen ermitteln
-                if isinstance(row, pd.Series) and "Schiff" in row:
-                    schiff_name = row["Schiff"]
-                else:
-                    schiff_name = "Default"  # oder ggf. dein Standardschiffname
-                
+
+            if umlauf_auswahl != "Alle":
+                row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
                 strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-       
-                bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
-                verbring_namen = df_umlauf[df_umlauf["Status"].isin([4,5,6])]["Polygon_Name"].dropna().unique()
-    
-                    
-                # ------------------------------------------------------------------------------------------------------------------
-                # 🔬 Lokale Hilfsfunktion: TDS-Parameter basierend auf Strategiewerten berechnen
-                # ------------------------------------------------------------------------------------------------------------------
-                def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb):
-                    if None in [verd_leer, verd_voll, vol_leer, vol_voll]:
-                        return {
-                            "ladungsmasse": None,
-                            "ladungsvolumen": None,
-                            "ladungsdichte": None,
-                            "feststoffkonzentration": None,
-                            "feststoffvolumen": None,
-                            "feststoffmasse": None,
-                            "bodenvolumen": None
-                        }
-        
-                    ladungsmasse = verd_voll - verd_leer
-                    ladungsvolumen = vol_voll - vol_leer
-                    ladungsdichte = ladungsmasse / ladungsvolumen if ladungsvolumen != 0 else None
-                    feststoffkonzentration = (ladungsdichte - pw) / (pf - pw) if ladungsdichte is not None else None
-                    feststoffvolumen = feststoffkonzentration * ladungsvolumen if feststoffkonzentration is not None else None
-                    feststoffmasse = feststoffvolumen * pf if feststoffvolumen is not None else None
-                    bodenvolumen = ((pf - pw) / (pf * (pb - pw))) * feststoffmasse if feststoffmasse is not None and pb is not None else None
-        
-                    return {
-                        "ladungsmasse": ladungsmasse,
-                        "ladungsvolumen": ladungsvolumen,
-                        "ladungsdichte": ladungsdichte,
-                        "feststoffkonzentration": feststoffkonzentration,
-                        "feststoffvolumen": feststoffvolumen,
-                        "feststoffmasse": feststoffmasse,
-                        "bodenvolumen": bodenvolumen
-                    }
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # 🎯 Strategie-Werte berechnen + TDS berechnen
-                # ------------------------------------------------------------------------------------------------------------------
-                if "Verdraengung" in df_umlauf.columns and "Ladungsvolumen" in df_umlauf.columns:
-                    werte, debug_info = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df)
-                    tds_werte = berechne_tds_aus_werte(
-                        werte.get("Verdraengung Start"),
-                        werte.get("Verdraengung Ende"),
-                        werte.get("Ladungsvolumen Start"),
-                        werte.get("Ladungsvolumen Ende"),
-                        pf, pw, pb
-                    )
-                else:
-                    werte = {
-                        "Verdraengung Start": None,
-                        "Verdraengung Ende": None,
-                        "Ladungsvolumen Start": None,
-                        "Ladungsvolumen Ende": None
-                    }
-                    debug_info = ["⚠️ Spalten Verdraengung oder Ladungsvolumen fehlen – keine Strategieauswertung möglich."]
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # 🔢 Vorbereitung von Anzeige- und Differenzwerten für Panels
-                # ------------------------------------------------------------------------------------------------------------------
-                kennzahlen["verdraengung_leer"] = werte.get("Verdraengung Start")
-                kennzahlen["verdraengung_voll"] = werte.get("Verdraengung Ende")
-                kennzahlen["volumen_leer"] = werte.get("Ladungsvolumen Start")
-                kennzahlen["volumen_voll"] = werte.get("Ladungsvolumen Ende")
-        
-                kennzahlen["verdraengung_leer"] = werte.get("Verdraengung Start")
-                kennzahlen["verdraengung_voll"] = werte.get("Verdraengung Ende")
-                kennzahlen["volumen_leer"] = werte.get("Ladungsvolumen Start")
-                kennzahlen["volumen_voll"] = werte.get("Ladungsvolumen Ende")
-                
-                kennzahlen["delta_verdraengung"] = (
-                    werte.get("Verdraengung Ende") - werte.get("Verdraengung Start")
-                    if None not in [werte.get("Verdraengung Start"), werte.get("Verdraengung Ende")] else None
-                )
-                
-                kennzahlen["delta_volumen"] = (
-                    werte.get("Ladungsvolumen Ende") - werte.get("Ladungsvolumen Start")
-                    if None not in [werte.get("Ladungsvolumen Start"), werte.get("Ladungsvolumen Ende")] else None
+                tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                    df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                 )
 
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # 🚢 Erneutes Einlesen + Pufferzeit (für Streckenberechnung mit erweitertem Zeitrahmen)
-                # ------------------------------------------------------------------------------------------------------------------
-                zeitpuffer_vorher = pd.Timedelta("15min")
-                df_umlauf = df[(df["timestamp"] >= (t_start - zeitpuffer_vorher)) & (df["timestamp"] <= t_ende)]
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # 📏 Strecken je Phase berechnen
-                # ------------------------------------------------------------------------------------------------------------------
-                strecken = berechne_strecken(
-                    df_umlauf,
-                    rw_col="RW_Schiff",
-                    hw_col="HW_Schiff",
-                    status_col="Status",
-                    epsg_code=epsg_code
-                )
-                gesamt = sum([
-                    v for v in [
-                        strecken["leerfahrt"],
-                        strecken["baggern"],
-                        strecken["vollfahrt"],
-                        strecken["verbringen"]
-                    ] if v is not None
-                ])
-        
-                # Formatierung für Anzeige (z. B. 1.234,56)
-                def format_km(val):
-                    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if val is not None else "-"
-        
-                strecke_leer_disp = format_km(strecken['leerfahrt'])
-                strecke_baggern_disp = format_km(strecken['baggern'])
-                strecke_vollfahrt_disp = format_km(strecken['vollfahrt'])
-                strecke_verbringen_disp = format_km(strecken['verbringen'])
-                strecke_gesamt_disp = format_km(gesamt)
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # 🎨 HTML-Styling für KPI-Panels
-                # ------------------------------------------------------------------------------------------------------------------
-                st.markdown("""
-                <style>
-                    .big-num {font-size: 2.5rem; font-weight: bold;}
-                    .panel {background: #f4f8fc; border-radius: 16px; padding: 20px; margin-bottom: 1.5rem;}
-                    .caption {font-size: 1rem; color: #555;}
-                    .highlight {font-weight: bold; font-size: 1.2rem; color: #0353a4;}
-                </style>
-                """, unsafe_allow_html=True)
-        
-                # ------------------------------------------------------------------------------------------------------------------
-                # ⏱ Dauer pro Phase berechnen
-                # ------------------------------------------------------------------------------------------------------------------
-                dauer_leerfahrt_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Start Baggern"), zeitformat)
-                dauer_baggern_disp = sichere_dauer(row.get("Start Baggern"), row.get("Start Vollfahrt"), zeitformat)
-                dauer_vollfahrt_disp = sichere_dauer(row.get("Start Vollfahrt"), row.get("Start Verklappen/Pump/Rainbow"), zeitformat)
-                dauer_verbringen_disp = sichere_dauer(row.get("Start Verklappen/Pump/Rainbow"), row.get("Ende"), zeitformat)
-                dauer_umlauf_disp = sichere_dauer(row.get("Start Leerfahrt"), row.get("Ende"), zeitformat)
 
-
-                # ======================================================================================================================
-                # TAB 5 – Anzeige der Panels: Zeitphasen, Baggerwerte, Strecken, Strategiewerte (Debug)
-                # ======================================================================================================================
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📌 Anzeige Bagger- und Verbringfelder in Panel-Stil
                 # ----------------------------------------------------------------------------------------------------------------------
@@ -1435,11 +716,14 @@ if uploaded_files:
                 
                 bagger_felder_text = "<br>".join(sorted(bagger_namen)) if len(bagger_namen) > 0 else "-"
                 verbring_felder_text = "<br>".join(sorted(verbring_namen)) if len(verbring_namen) > 0 else "-"
-                
-               
 
-                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
 
+                zeige_bagger_und_verbringfelder(
+                    bagger_namen=bagger_namen,
+                    verbring_namen=verbring_namen,
+                    df=df,
+                    baggerfelder=baggerfelder  # ❗️wichtig!
+                )
 
                 
                 # ----------------------------------------------------------------------------------------------------------------------
@@ -1466,12 +750,13 @@ if uploaded_files:
                 st.markdown("#### Strecken im Umlauf")
                 if kennzahlen:                
                     zeige_strecken_panels(
-                        strecke_leer_disp, strecke_baggern_disp, strecke_vollfahrt_disp,
-                        strecke_verbringen_disp, strecke_gesamt_disp,
-                        dauer_leerfahrt_disp, dauer_baggern_disp, dauer_vollfahrt_disp,
-                        dauer_verbringen_disp, dauer_umlauf_disp,
+                        strecke_disp["leerfahrt"], strecke_disp["baggern"], strecke_disp["vollfahrt"],
+                        strecke_disp["verbringen"], strecke_disp["gesamt"],
+                        dauer_disp["leerfahrt"], dauer_disp["baggern"], dauer_disp["vollfahrt"],
+                        dauer_disp["verbringen"], dauer_disp["umlauf"],
                         strecken_panel_template
                     )
+
               
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 🛠️ Debug-Infos (ausklappbar) – Strategie-Auswertung und Werte anzeigen
@@ -1510,46 +795,47 @@ if uploaded_files:
                     ])
                 
                     st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
-
+            else:
+                st.info("Bitte einen konkreten Umlauf auswählen.")
 
 #==============================================================================================================================
 # Tab - Umlauftabelle - gesamt 
 #==============================================================================================================================
             
-
         with tab6:
-           
-           
-           
-           
-            zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
-            st.markdown("---")
-            # ⚙️ Statuszeiten
-            #st.markdown("### Statuszeiten im Umlauf")
-            zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
+            if umlauf_auswahl != "Alle":
+                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
+                st.markdown("---")
 
+                zeige_statuszeiten_panels_mit_strecke(
+                    row=row,
+                    zeitzone=zeitzone,
+                    zeitformat="hh:mm:ss",
+                    strecken=strecke_disp,  # z. B. {"leerfahrt": "1,23 km", "gesamt": "5,42 km", ...}
+                    panel_template=status_panel_template_mit_strecke
+                )
+                        
+                
+                zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
         
-            # 📈 Diagramm
-            #st.markdown("### Prozessdiagramm")
-            zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
-
+                zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
         
-            # ⚒️ Baggerwerte
-            #st.markdown("### Baggerwerte")
-            zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
-
-
-            with st.expander("📊 Verweilzeiten pro Polygon"):
-                df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
-                df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
-            
-                st.write("**Baggerzeiten pro Feld (Status 2):**")
-                st.dataframe(df_bagger)
-            
-                st.write("**Verbringzeiten pro Feld (Status 4):**")
-                st.dataframe(df_verbring)
-
-       
+                zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
+        
+                with st.expander("📊 Verweilzeiten pro Polygon"):
+                    df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
+                    df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
+        
+                    st.write("**Baggerzeiten pro Feld (Status 2):**")
+                    st.dataframe(df_bagger)
+        
+                    st.write("**Verbringzeiten pro Feld (Status 4):**")
+                    st.dataframe(df_verbring)
+                    
+                    
+        
+            else:
+                st.info("Bitte einen konkreten Umlauf auswählen.")
 
 #=====================================================================================
     except Exception as e:
