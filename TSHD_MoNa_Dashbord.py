@@ -640,7 +640,15 @@ if uploaded_files:
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
 
-        
+            with st.expander("📊 Verweilzeiten pro Polygon"):
+                df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
+                df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
+    
+                st.write("**Baggerzeiten pro Feld (Status 2):**")
+                st.dataframe(df_bagger)
+    
+                st.write("**Verbringzeiten pro Feld (Status 4):**")
+                st.dataframe(df_verbring)
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
@@ -650,6 +658,7 @@ if uploaded_files:
             # Nur anzeigen, wenn ein einzelner Umlauf ausgewählt ist
             if umlauf_auswahl != "Alle" and row is not None:
                 st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
+                zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
                 zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
 
 
@@ -804,33 +813,18 @@ if uploaded_files:
             
         with tab6:
             if umlauf_auswahl != "Alle":
-                zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
-                st.markdown("---")
+                #zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
+                #st.markdown("---")
 
-                zeige_statuszeiten_panels_mit_strecke(
-                    row=row,
-                    zeitzone=zeitzone,
-                    zeitformat="hh:mm:ss",
-                    strecken=strecke_disp,  # z. B. {"leerfahrt": "1,23 km", "gesamt": "5,42 km", ...}
-                    panel_template=status_panel_template_mit_strecke
-                )
-                        
-                
-                zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
+                zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
+
+                #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
         
                 zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
         
                 zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
         
-                with st.expander("📊 Verweilzeiten pro Polygon"):
-                    df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
-                    df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
-        
-                    st.write("**Baggerzeiten pro Feld (Status 2):**")
-                    st.dataframe(df_bagger)
-        
-                    st.write("**Verbringzeiten pro Feld (Status 4):**")
-                    st.dataframe(df_verbring)
+
                     
                     
         
