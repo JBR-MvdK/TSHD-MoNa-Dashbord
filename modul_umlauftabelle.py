@@ -1,7 +1,13 @@
 # modul_umlauftabelle.py
 
 import pandas as pd
-from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminuten
+
+from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_de
+from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
+from modul_berechnungen import berechne_tds_aus_werte, berechne_umlauf_auswertung
+
+
+
 
 def show_gesamtzeiten_dynamisch(
     summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf, 
@@ -127,3 +133,100 @@ def berechne_gesamtzeiten(
         "verklapp":  sum(dauer_verklapp_list, pd.Timedelta(0)),
         "umlauf":    sum(dauer_umlauf_list, pd.Timedelta(0))
     }
+
+
+def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
+    import pandas as pd
+
+    daten = []
+
+    for _, row in umlauf_info_df.iterrows():
+        try:
+            t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
+            t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
+            df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
+
+            tds, werte, kennzahlen, *_ = berechne_umlauf_auswertung(
+                df_context, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+            )
+
+            leer_masse = werte.get("Verdraengung Start")
+            voll_masse = werte.get("Verdraengung Ende")
+            diff_masse = voll_masse - leer_masse if None not in [leer_masse, voll_masse] else None
+
+            leer_vol = werte.get("Ladungsvolumen Start")
+            voll_vol = werte.get("Ladungsvolumen Ende")
+            diff_vol = voll_vol - leer_vol if None not in [leer_vol, voll_vol] else None
+
+            zeile = [
+                row["Umlauf"],
+                format_de(leer_masse, 0) + " t",
+                format_de(voll_masse, 0) + " t",
+                format_de(diff_masse, 0) + " t",
+                format_de(leer_vol, 0) + " m³",
+                format_de(voll_vol, 0) + " m³",
+                format_de(diff_vol, 0) + " m³",
+                format_de(tds.get("ladungsvolumen"), 0) + " m³",  # wird später überschrieben
+                format_de(tds.get("ladungsdichte"), 3) + " t/m³",
+                format_de(tds.get("feststoffmasse"), 0) + " t"
+            ]
+        except Exception:
+            zeile = [row["Umlauf"]] + ["-"] * 9
+
+        daten.append(zeile)
+
+    # MultiIndex-Spalten ohne Einheiten
+    spalten = pd.MultiIndex.from_tuples([
+        ("", "Umlauf"),
+        ("Ladungsmasse", "leer"),
+        ("Ladungsmasse", "voll"),
+        ("Ladungsmasse", "Differenz"),
+        ("Ladungsvolumen", "leer"),
+        ("Ladungsvolumen", "voll"),
+        ("Ladungsvolumen", "Differenz"),
+        ("Ladungsvolumen", "kumuliert"),
+        ("Ladungsdichte", ""),
+        ("Feststoffmasse", ""),
+    ])
+
+
+    df_tabelle = pd.DataFrame(daten, columns=spalten)
+
+
+    # Kumuliert berechnen
+    def parse_number(val):
+        try:
+            return float(val.replace(".", "").replace(",", ".").split()[0])
+        except:
+            return None
+    
+    roh_vol = df_tabelle[("Ladungsvolumen", "Differenz")].map(parse_number)
+    df_tabelle[("Ladungsvolumen", "kumuliert")] = roh_vol.cumsum().map(lambda x: format_de(x, 0) + " m³" if x else "-")
+
+
+
+    return df_tabelle
+
+
+def style_tds_tabelle(df):
+    # 🎨 Sehr blasse Farben
+    def farbe_masse(val): return "background-color: rgba(200,200,200,0.05)"     # ganz blasses grau
+    def farbe_volumen(val): return "background-color: rgba(0,180,255,0.04)"   # ganz blasses blau
+    def farbe_dichte(val): return "background-color: rgba(200,200,200,0.05)"   # fast weiß, leicht gelblich
+    def farbe_feststoff(val): return "background-color: rgba(0,255,80,0.05)" # ganz blasses Rosé
+
+    styler = df.style
+    styler = styler.set_properties(**{"text-align": "right"})
+    styler = styler.set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+
+    styler = styler.applymap(farbe_masse, subset=pd.IndexSlice[:, ("Ladungsmasse", slice(None))])
+    styler = styler.applymap(farbe_volumen, subset=pd.IndexSlice[:, ("Ladungsvolumen", slice(None))])
+    styler = styler.applymap(farbe_dichte, subset=pd.IndexSlice[:, ("Ladungsdichte", slice(None))])
+    styler = styler.applymap(farbe_feststoff, subset=pd.IndexSlice[:, ("Feststoffmasse", slice(None))])
+
+    return styler
+
+
+
+
+

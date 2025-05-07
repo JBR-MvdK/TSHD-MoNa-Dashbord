@@ -32,77 +32,98 @@ def status_bereiche(df, status_liste):
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📊 zeige_prozessgrafik_tab – Hauptdiagramm mit Verlauf aller Messgrößen für gewählten Umlauf
 # -------------------------------------------------------------------------------------------------------------------------------
+
 def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="BB+SB", plot_key="prozessgrafik"):
-    """
-    Zeichnet interaktive Zeitreihen zu Dichte, Tiefe, Pegel, Verdrängung etc. für einen Umlauf.
-    Die Kurven werden normalisiert (0–1) für übersichtliche Darstellung und Statusphasen farbig hinterlegt.
-    """
+    df_full = df.copy()
 
     if row is None:
         st.info("Kein Umlauf ausgewählt.")
         return
 
-    # 🕒 Zeitrahmen bestimmen
-    t_start = pd.to_datetime(row["Start Leerfahrt"]).tz_localize("UTC") if pd.to_datetime(row["Start Leerfahrt"]).tzinfo is None else row["Start Leerfahrt"]
-    t_ende  = pd.to_datetime(row["Ende"]).tz_localize("UTC") if pd.to_datetime(row["Ende"]).tzinfo is None else row["Ende"]
+    # Zeitrahmen + Erweiterung um 10 Minuten
+    t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
+    t_ende = pd.to_datetime(row["Ende"], utc=True)
+    t_start_ext = t_start - pd.Timedelta(minutes=10)
+    t_ende_ext = t_ende + pd.Timedelta(minutes=10)
 
-    # 🔄 UTC-Angabe sicherstellen
     if df["timestamp"].dt.tz is None:
         df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
 
-    df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-    werte, _ = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df) if "Verdraengung" in df_umlauf.columns else ({}, {})
+    df_plot = df[(df["timestamp"] >= t_start_ext) & (df["timestamp"] <= t_ende_ext)].sort_values("timestamp").reset_index(drop=True)
 
-    # 🎨 Kurven-Konfiguration (sichtbare + unsichtbare Messgrößen)
-    # Dynamisch je nach Datenverfügbarkeit
+    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+    df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
+    werte, _ = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df_full) if "Verdraengung" in df_umlauf.columns else ({}, {})
+
+    # --- Kurven vorbereiten ---
     kurven_fuellstand = [
         {"spaltenname": col, "label": f"{col.replace('_', ' ')} [m]", "farbe": "#AAB7B8", "sichtbar": False, "dicke": 1}
         for col in [
             'Fuellstand_BB_vorne', 'Fuellstand_SB_vorne',
             'Fuellstand_BB_mitte', 'Fuellstand_SB_mitte',
-            'Fuellstand_BB_hinten', 'Fuellstand_SB_hinten'
-        ]
+            'Fuellstand_BB_hinten', 'Fuellstand_SB_hinten']
         if col in df.columns and df[col].notnull().any()
     ]
 
     kurven_haupt = [
         {"spaltenname": "Status", "label": "Status", "farbe": "#BDBDBD", "sichtbar": False},
         {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#3D5A80", "sichtbar": False},
+        {"spaltenname": "Geschwindigkeit", "label": "Geschwindigkeit [knt]", "farbe": "#186A3B", "sichtbar": False},
         {"spaltenname": "Tiefgang_vorne", "label": "Tiefgang vorne [m]", "farbe": "#5B84B1", "sichtbar": False},
         {"spaltenname": "Tiefgang_hinten", "label": "Tiefgang hinten [m]", "farbe": "#5B84B1", "sichtbar": False},
         {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True},
         {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#628395", "sichtbar": False, "nur_baggern": True},
         {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#7D8CA3", "sichtbar": True},
         {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#8E735B", "sichtbar": False},
-        # ... weitere Felder ...
     ] + kurven_fuellstand
 
     fig = go.Figure()
-    df_plot = df.sort_values("timestamp").reset_index(drop=True)
 
-    # 🟡 Statushinterlegung (z. B. Baggern = blau)
-    for status, farbe, name in [([2], "rgba(0,180,255,0.12)", "Baggern"), ([4, 5, 6], "rgba(0,255,80,0.11)", "Verbringen")]:
-        for s, e in zip(*status_bereiche(df, status)):
-            fig.add_vrect(
-                x0=convert_timestamp(df.loc[s, "timestamp"], zeitzone),
-                x1=convert_timestamp(df.loc[e, "timestamp"], zeitzone),
-                fillcolor=farbe, layer="below", line_width=0,
-                annotation_text=name, annotation_position="top left"
-            )
 
-    # 📈 Kurven hinzufügen
+    
+    # 🔲 Sanfte farbliche Hinterlegung der Statusphasen – nur innerhalb des Umlaufs
+    for status, farbe, name in [
+        ([1], "rgba(200,200,200,0.10)", "Leerfahrt"),
+        ([2], "rgba(0,180,255,0.10)", "Baggern"),
+        ([3], "rgba(200,200,200,0.10)", "Vollfahrt"),
+        ([4, 5, 6], "rgba(0,255,80,0.11)", "Verbringen")
+    ]:
+        for s, e in zip(*status_bereiche(df_plot, status)):
+            t0 = df_plot.loc[s, "timestamp"]
+            t1 = df_plot.loc[e, "timestamp"]
+    
+            # Nur den Teil anzeigen, der innerhalb des Umlaufs liegt
+            t0_clip = max(t0, t_start)
+            t1_clip = min(t1, t_ende)
+    
+            if t0_clip < t1_clip:
+                fig.add_vrect(
+                    x0=convert_timestamp(t0_clip, zeitzone),
+                    x1=convert_timestamp(t1_clip, zeitzone),
+                    fillcolor=farbe,
+                    layer="below",
+                    line_width=0,
+                    annotation_text=name,
+                    annotation_position="top left"
+                )
+
+
+
+
+
+
+    # Kurven zeichnen
     for k in kurven_haupt:
         spalten = get_spaltenname(k["spaltenname"], seite)
         if isinstance(spalten, list):
-            spalten = [s for s in spalten if s in df.columns]
+            spalten = [s for s in spalten if s in df_plot.columns]
         else:
-            spalten = [spalten] if spalten in df.columns else []
+            spalten = [spalten] if spalten in df_plot.columns else []
 
         for s in spalten:
-            mask = (df["Status"] == 2) if k.get("nur_baggern") else pd.Series(True, index=df.index)
-            y = pd.to_numeric(df.loc[mask, s], errors="coerce")
-            x = plot_x(df, mask, zeitzone)
+            mask = (df_plot["Status"] == 2) if k.get("nur_baggern") else pd.Series(True, index=df_plot.index)
+            y = pd.to_numeric(df_plot.loc[mask, s], errors="coerce")
+            x = plot_x(df_plot, mask, zeitzone)
             if y.empty or y.min() == y.max():
                 continue
             y_norm = (y - y.min()) / (y.max() - y.min())
@@ -114,22 +135,46 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
                 visible=True if k["sichtbar"] else "legendonly"
             ))
 
-    # 📍 Strategiepunkte als vertikale Linien
-    for key, color in [
-        ("Verdraengung Start TS", "#A67C52"),
-        ("Verdraengung Ende TS", "#A67C52"),
-        ("Ladungsvolumen Start TS", "#8C8C8C"),
-        ("Ladungsvolumen Ende TS", "#8C8C8C")
-    ]:
+    # Strategielinien
+    # Strategielinien mit individuellem Linienstil
+    strategie_linien = [
+        ("Verdraengung Start TS", "#A67C52", "dash"),
+        ("Verdraengung Ende TS", "#A67C52", "dash"),
+        ("Ladungsvolumen Start TS", "#8C8C8C", "dot"),
+        ("Ladungsvolumen Ende TS", "#8C8C8C", "dot")
+    ]
+    
+    for key, color, dash in strategie_linien:
         ts = werte.get(key)
         if ts is not None and pd.notnull(ts):
             fig.add_vline(
                 x=convert_timestamp(ts, zeitzone),
-                line=dict(color=color, width=2, dash="dot"),
+                line=dict(color=color, width=2, dash=dash),
                 opacity=0.8
             )
 
-    # 📋 Layout
+
+    # Umlaufmarkierungen
+    for ts, label in [(t_start, "Umlauf Start"),    (t_ende, "Umlauf Ende")]:
+        ts_conv = convert_timestamp(ts, zeitzone)
+        fig.add_shape(
+            type="line",
+            x0=ts_conv, x1=ts_conv,
+            y0=0, y1=1,
+            xref="x", yref="paper",
+            line=dict(color="black", width=3, dash="dashdot"),
+            opacity=0.7
+        )
+        fig.add_annotation(
+            x=ts_conv,
+            y=1.05,
+            xref="x", yref= "paper",
+            text=label,
+            showarrow=False,
+            font=dict(size=11, color="black")
+        )
+
+    # Layout
     fig.update_layout(
         height=600,
         yaxis=dict(showticklabels=False, gridcolor="lightgray"),
@@ -140,7 +185,6 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
     )
 
     st.plotly_chart(fig, use_container_width=True, key=plot_key)
-
 
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📏 zeige_baggerkopftiefe_grafik – Separate Grafik zur Darstellung der Baggertiefe (nur Status 2)
@@ -229,23 +273,36 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB"):
         y_min = -20
         y_max = 0
 
-    # 🔴 Toleranzbereich (Solltiefe ± Abweichung) zeichnen
-    if {"Solltiefe_Aktuell", "Solltiefe_Oben", "Solltiefe_Unten"}.issubset(df_plot.columns):
-        status_mask = df_plot["Status"] == 2
-        x_corridor = plot_x(df_plot, status_mask, zeitzone)
-        y_oben = df_plot.loc[status_mask, "Solltiefe_Oben"]
-        y_unten = df_plot.loc[status_mask, "Solltiefe_Unten"]
 
-        fig2.add_trace(go.Scatter(
-            x=np.concatenate([x_corridor, x_corridor[::-1]]),
-            y=np.concatenate([y_oben, y_unten[::-1]]),
-            fill='toself',
-            fillcolor='rgba(255,0,0,0.13)',
-            line=dict(color='rgba(255,0,0,0)'),
-            hoverinfo='skip',
-            name='Toleranzbereich',
-            showlegend=True,
-        ))
+    # 🔴 Toleranzbereich (nur zeichnen, wenn Werte vorhanden und keine großen Gaps)
+    if {"Solltiefe_Aktuell", "Solltiefe_Oben", "Solltiefe_Unten"}.issubset(df_plot.columns):
+        status_mask = (df_plot["Status"] == 2)
+        corridor_df = df_plot.loc[status_mask, ["timestamp", "Solltiefe_Oben", "Solltiefe_Unten"]].copy()
+    
+        # Nur Zeilen mit vollständigen Solltiefen
+        corridor_df = corridor_df.dropna(subset=["Solltiefe_Oben", "Solltiefe_Unten"])
+        if not corridor_df.empty:
+            # In Segmente aufteilen (bei Zeitlücken > 2 Minuten)
+            corridor_df = split_by_gap(corridor_df, max_gap_minutes=2)
+    
+            for seg_id, seg in corridor_df.groupby("segment"):
+                if seg.empty:
+                    continue
+    
+                x_corridor = plot_x(seg, [True] * len(seg), zeitzone)
+                y_oben = seg["Solltiefe_Oben"].to_numpy()
+                y_unten = seg["Solltiefe_Unten"].to_numpy()
+    
+                fig2.add_trace(go.Scatter(
+                    x=np.concatenate([x_corridor, x_corridor[::-1]]),
+                    y=np.concatenate([y_oben, y_unten[::-1]]),
+                    fill='toself',
+                    fillcolor='rgba(255,0,0,0.13)',
+                    line=dict(color='rgba(255,0,0,0)'),
+                    hoverinfo='skip',
+                    name='Toleranzbereich',
+                    showlegend=(seg_id == 0),  # nur beim ersten zeigen
+                ))
 
     # 🎨 Layout & Darstellung
     fig2.update_layout(

@@ -3,6 +3,34 @@ from modul_strecken import berechne_strecken
 from modul_startend_strategie import berechne_start_endwerte
 from modul_hilfsfunktionen import sichere_dauer
 
+
+# ------------------------------------------------------------
+# 🧮 TDS-Berechnung basierend auf 4 Start/End-Werten
+# ------------------------------------------------------------
+def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb):
+    if None in [verd_leer, verd_voll, vol_leer, vol_voll]:
+        return {k: None for k in [
+            "ladungsmasse", "ladungsvolumen", "ladungsdichte", "feststoffkonzentration",
+            "feststoffvolumen", "feststoffmasse", "bodenvolumen"
+        ]}
+    ladungsmasse = verd_voll - verd_leer
+    ladungsvolumen = vol_voll - vol_leer
+    ladungsdichte = ladungsmasse / ladungsvolumen if ladungsvolumen else None
+    feststoffkonzentration = (ladungsdichte - pw) / (pf - pw) if ladungsdichte else None
+    feststoffvolumen = feststoffkonzentration * ladungsvolumen if feststoffkonzentration else None
+    feststoffmasse = feststoffvolumen * pf if feststoffvolumen else None
+    bodenvolumen = ((pf - pw) / (pf * (pb - pw))) * feststoffmasse if feststoffmasse and pb else None
+    return {
+        "ladungsmasse": ladungsmasse,
+        "ladungsvolumen": ladungsvolumen,
+        "ladungsdichte": ladungsdichte,
+        "feststoffkonzentration": feststoffkonzentration,
+        "feststoffvolumen": feststoffvolumen,
+        "feststoffmasse": feststoffmasse,
+        "bodenvolumen": bodenvolumen
+    }
+    
+    
 def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
     """
     Vollständige Auswertung eines Umlaufs:
@@ -34,32 +62,7 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
     verbring_namen = df_umlauf[df_umlauf["Status"].isin([4, 5, 6])]["Polygon_Name"].dropna().unique()
 
-    # ------------------------------------------------------------
-    # 🧮 Hilfsfunktion zur TDS-Berechnung auf Basis von Strategie-Werten
-    # ------------------------------------------------------------
-    def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb):
-        if None in [verd_leer, verd_voll, vol_leer, vol_voll]:
-            return {k: None for k in [
-                "ladungsmasse", "ladungsvolumen", "ladungsdichte", "feststoffkonzentration",
-                "feststoffvolumen", "feststoffmasse", "bodenvolumen"
-            ]}
-        ladungsmasse = verd_voll - verd_leer
-        ladungsvolumen = vol_voll - vol_leer
-        ladungsdichte = ladungsmasse / ladungsvolumen if ladungsvolumen else None
-        feststoffkonzentration = (ladungsdichte - pw) / (pf - pw) if ladungsdichte else None
-        feststoffvolumen = feststoffkonzentration * ladungsvolumen if feststoffkonzentration else None
-        feststoffmasse = feststoffvolumen * pf if feststoffvolumen else None
-        bodenvolumen = ((pf - pw) / (pf * (pb - pw))) * feststoffmasse if feststoffmasse and pb else None
-        return {
-            "ladungsmasse": ladungsmasse,
-            "ladungsvolumen": ladungsvolumen,
-            "ladungsdichte": ladungsdichte,
-            "feststoffkonzentration": feststoffkonzentration,
-            "feststoffvolumen": feststoffvolumen,
-            "feststoffmasse": feststoffmasse,
-            "bodenvolumen": bodenvolumen
-        }
-
+  
     # ------------------------------------------------------------
     # 🔍 Strategieauswertung nur, wenn nötige Spalten existieren
     # ------------------------------------------------------------
@@ -135,3 +138,7 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
         strecke_disp, dauer_disp, debug_info,
         bagger_namen, verbring_namen
     )
+
+# 🔚 Modulexport (optional, aber korrekt)
+__all__ = ["berechne_tds_aus_werte", "berechne_umlauf_auswertung"]
+

@@ -15,3 +15,4 @@ def berechne_punkte_und_zeit(df, statuswert, sekunden_pro_punkt=10):
         "Anzahl_Punkte": punkte,
         "Zeit_Minuten": zeit.round(1)
     })
+

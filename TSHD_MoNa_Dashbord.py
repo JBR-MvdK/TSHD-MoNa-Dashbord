@@ -85,7 +85,8 @@ from modul_berechnungen import berechne_umlauf_auswertung
 from modul_umlauftabelle import (
     show_gesamtzeiten_dynamisch,
     erstelle_umlauftabelle,
-    berechne_gesamtzeiten
+    berechne_gesamtzeiten,
+    erzeuge_tds_tabelle, erzeuge_tds_tabelle, style_tds_tabelle
 )
 
 # 🗺️ Darstellung der Tracks + Polygone auf interaktiven Karten
@@ -180,6 +181,7 @@ if uploaded_files:
         
         # Erfolgsmeldung anzeigen: Wie viele Zeilen wurden geladen?
         upload_status.success(f"{len(df)} Zeilen aus {len(uploaded_files)} Datei(en) geladen")
+        
         
         # Berechnung zusätzlicher TDS-Parameter (z.B. Dichte, Konzentrationen)
         df = berechne_tds_parameter(df, pf, pw)
@@ -355,7 +357,7 @@ if uploaded_files:
         # Zeitformat wählen (hh:mm:ss, Dezimalminuten, Dezimalstunden)
         with col_zeitformat:
             zeitformat = st.selectbox(
-                "🕒 Zeitformat für Summenanzeige",
+                "🕒 Zeitformat",
                 options=["hh:mm:ss", "dezimalminuten", "dezimalstunden"],
                 index=1,
                 format_func=lambda x: {
@@ -368,7 +370,7 @@ if uploaded_files:
         # Zeitzone auswählen
         with col_zeitzone:
             zeitzone = st.selectbox(
-                "🌍 Zeitzone anzeigen",
+                "🌍 Zeitzone",
                 ["UTC", "Lokal (Europe/Berlin)"],
                 index=0
             )
@@ -393,7 +395,15 @@ if uploaded_files:
                 # Kennzahlen (z. B. Mengen, Zeiten, Verdraengung etc.) berechnen
                 kennzahlen = berechne_umlauf_kennzahlen(row, df)
    
+        if row is not None:
+            # 📌 Erweiterter Zeitraum für Diagramm + Strategieberechnung
+            t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
+            t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
             
+            df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
+        else:
+            df_context = df.copy()  # Fallback: gesamter Datensatz
+     
 
 #==============================================================================================================================
 # 🔵 Baggerseite erkennen und auswählen
@@ -510,6 +520,11 @@ if uploaded_files:
         # 👉 Auswahlzeile vorbereiten, falls ein einzelner Umlauf gewählt ist
         zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
 
+        
+
+        
+        
+
 #==============================================================================================================================
 # 🔵 Tabs definieren
 #==============================================================================================================================
@@ -551,6 +566,13 @@ if uploaded_files:
                     # Panels und Felder
                     #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
                     #st.markdown("---")
+                    
+                    # Berechnung der Zeiten aus Polygonauswertung
+                    bagger_df = berechne_punkte_und_zeit(df, statuswert=2)
+                    bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
+                    
+                    verbring_df = berechne_punkte_und_zeit(df, statuswert=4)
+                    verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
                     
                     zeige_bagger_und_verbringfelder(
                         bagger_namen=bagger_namen,
@@ -652,18 +674,34 @@ if uploaded_files:
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
+
         
         with tab2:
-            
-            # Nur anzeigen, wenn ein einzelner Umlauf ausgewählt ist
-            if umlauf_auswahl != "Alle" and row is not None:
-                st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
-                zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
-                zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
-
-
+            st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
+        
+            if umlauf_auswahl != "Alle":
+                # Hole die Zeile zum gewählten Umlauf
+                row_df = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
+        
+                if not row_df.empty:
+                    row = row_df.iloc[0]
+        
+                    # Hole Strategie und führe Auswertung durch
+                    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                        df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+                    )
+        
+                    # Panels und Prozessgrafik anzeigen
+                    zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
+                    zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
+        
+                else:
+                    st.warning("⚠️ Kein Datensatz zum gewählten Umlauf gefunden.")
+        
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
+
 
 # ==============================================================================================================================
 # Tab 3 - Diagramm Tiefe Baggerkopf (Modularisiert)
@@ -681,27 +719,67 @@ if uploaded_files:
 # Tab 4 - Umlauftabelle - gesamt 
 #==============================================================================================================================
  
-        with tab4:
-            st.markdown("#### Auflistung aller Umläufe")
-        
-            if not umlauf_info_df.empty:
-                df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
-                    umlauf_info_df, zeitzone, zeitformat
-                )
-        
-                gesamtzeiten = berechne_gesamtzeiten(list_leer, list_bagg, list_voll, list_verk, list_umlauf)
-                df_gesamt = show_gesamtzeiten_dynamisch(
-                    gesamtzeiten["leerfahrt"], gesamtzeiten["baggern"],
-                    gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
-                    gesamtzeiten["umlauf"], zeitformat=zeitformat
-                )
-        
-                st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
-                st.markdown("#### Aufsummierte Dauer")
-                st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
-        
-            else:
-                st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
+
+            with tab4:
+                st.markdown("#### Auflistung aller Umläufe")
+            
+                if not umlauf_info_df.empty:
+                    # ✅ Immer ALLE Umläufe sichern, bevor ggf. Filterung stattfindet
+                    umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
+            
+                    # 🧾 Umlauftabelle und Gesamtzeiten berechnen
+                    df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
+                        umlauf_info_df, zeitzone, zeitformat
+                    )
+            
+                    gesamtzeiten = berechne_gesamtzeiten(list_leer, list_bagg, list_voll, list_verk, list_umlauf)
+                    df_gesamt = show_gesamtzeiten_dynamisch(
+                        gesamtzeiten["leerfahrt"], gesamtzeiten["baggern"],
+                        gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
+                        gesamtzeiten["umlauf"], zeitformat=zeitformat
+                    )
+            
+                    # 📊 Tabellen anzeigen
+                    st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
+                    st.markdown("#### Aufsummierte Dauer")
+                    st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
+            
+                    # ------------------------------------------------------------------------------------
+                    # 📦 Optional: TDS-Tabelle für alle Umläufe generieren
+                    # ------------------------------------------------------------------------------------
+           
+                    st.markdown("---")
+                    st.markdown("#### Übersicht: TDS-Kennzahlen je Umlauf")
+            
+                    # 🔘 Button zum Start der Berechnung
+                    if st.button("🔄 TDS-Tabelle berechnen"):
+                        with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
+                            strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
+                            if not strategie:
+                                strategie = {
+                                    "Verdraengung": {"Start": "standard", "Ende": "standard"},
+                                    "Ladungsvolumen": {"Start": "standard", "Ende": "standard"}
+                                }
+            
+                            # 🔁 Immer ALLE Umläufe an erzeuge_tds_tabelle übergeben
+                            st.session_state["tds_df"] = erzeuge_tds_tabelle(
+                                df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+                            )
+                            #st.success("✅ TDS-Tabelle erfolgreich berechnet.")
+            
+                    # 📊 Anzeige aus Cache, falls vorhanden
+                    if "tds_df" in st.session_state:
+                        st.dataframe(style_tds_tabelle(st.session_state["tds_df"]), use_container_width=True, hide_index=True)
+
+                    else:
+                        st.info("🔹 Noch keine TDS-Tabelle berechnet. Klick oben auf den Button.")
+            
+                else:
+                    st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
+            
+                    
+
+               
 
 # ======================================================================================================================
 # TAB 5 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
@@ -820,7 +898,7 @@ if uploaded_files:
 
                 #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
         
-                zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
+                zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
         
                 zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
         

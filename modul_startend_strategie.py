@@ -24,27 +24,36 @@ def get_statuswechselzeit(df, von, nach, zeit_col="timestamp"):
     wechsler = df[mask]
     return wechsler[zeit_col].iloc[0] if not wechsler.empty else None
 
-def get_statuswechselzeit_flexibel(df, von, nach, zeit_col="timestamp", ignorierte_status=None):
+def get_letzten_statuswechsel(df, von, nach, zeit_col="timestamp", ignorierte_status=None):
     """
-    Findet auch indirekte Wechsel von `von` nach `nach` unter Überspringung von definierten Zwischenstatus.
+    Sucht den letzten Statuswechsel von `von` zu `nach`, auch über ignorierte Zwischenstatus hinweg.
     """
     if ignorierte_status is None:
         ignorierte_status = []
+
     df = df[[zeit_col, "Status"]].copy()
     df["prev"] = df["Status"].shift(1)
 
-    for i in range(1, len(df)):
+    last_ts = None
+    i = 1
+    while i < len(df):
         s_prev = df.iloc[i - 1]["Status"]
         s_curr = df.iloc[i]["Status"]
+
         if s_prev == von and s_curr == nach:
-            return df.iloc[i][zeit_col]
-        if s_prev == von and s_curr in ignorierte_status:
+            last_ts = df.iloc[i][zeit_col]
+            i += 1
+        elif s_prev == von and s_curr in ignorierte_status:
             for j in range(i + 1, len(df)):
                 if df.iloc[j]["Status"] == nach:
-                    return df.iloc[j][zeit_col]
+                    last_ts = df.iloc[j][zeit_col]
+                    i = j
+                    break
                 if df.iloc[j]["Status"] not in ignorierte_status:
                     break
-    return None
+        i += 1
+
+    return last_ts
 
 def suche_extrem_zweizeitfenster(df, zeitpunkt, vor, nach, col, art="max", zeit_col="timestamp"):
     """
@@ -82,7 +91,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
 
     # --- Statuswechsel-Zeitpunkte suchen ---
     statuszeit_1_2 = get_statuswechselzeit(df_ref, 1, 2, zeit_col)
-    statuszeit_2_3 = get_statuswechselzeit_flexibel(df_ref, 2, 3, zeit_col, ignorierte_status=[1])
+    statuszeit_2_3 = get_letzten_statuswechsel(df_ref, 2, 3, zeit_col, ignorierte_status=[1])
     statuszeit_456_1 = get_statuswechselzeit(df_ref, 456, 1, zeit_col)
 
     if statuszeit_456_1 is None and not df.empty and df.iloc[0]["Status"] == 1:

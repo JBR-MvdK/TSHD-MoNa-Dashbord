@@ -1,6 +1,5 @@
 import streamlit as st
 from modul_hilfsfunktionen import format_time, sichere_dauer, format_de
-
 from modul_polygon_auswertung import berechne_punkte_und_zeit
 
 # =================================================================================================
@@ -361,26 +360,21 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
     """
     col_feld1, col_feld2 = st.columns([1, 1])
 
-    def berechne_minuten(namen_liste, df_status):
-        polygon_counts = df_status["Polygon_Name"].value_counts()
-        result = {}
-        for name in namen_liste:
-            if name != "außerhalb":
-                count = polygon_counts.get(name, 0)
-                result[name] = round((count * 10) / 60, 1)
-        ausserhalb_count = polygon_counts.get("außerhalb", 0)
-        result["außerhalb"] = round((ausserhalb_count * 10) / 60, 1)
-        return result
-
     # Mapping: Baggerfeldname → Solltiefe
     solltiefen_dict = {}
     if baggerfelder:
         solltiefen_dict = {feld["name"]: feld.get("solltiefe") for feld in baggerfelder}
 
-    # Baggerfelder
-    df_bagger = df[df["Status"] == 2]
-    bagger_zeiten = berechne_minuten(bagger_namen, df_bagger)
+    # 🕒 Zeiten berechnen – auf Basis von Polygon-Auswertung
+    bagger_df = berechne_punkte_und_zeit(df, statuswert=2)
+    bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
 
+    verbring_df = berechne_punkte_und_zeit(df, statuswert=4)
+    verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
+
+    # --------------------------------------------------------------------------------------------------
+    # 🟦 Baggerfelder anzeigen
+    # --------------------------------------------------------------------------------------------------
     with col_feld1:
         st.markdown("#### Baggerstelle")
         if bagger_zeiten:
@@ -389,8 +383,7 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     continue
                 minutes = bagger_zeiten.get(name, 0.0)
                 soll = solltiefen_dict.get(name)
-                # ↓ Trenner jetzt: |
-                soll_text = f"Solltiefe: {soll:.2f} m | " if soll else ""
+                soll_text = f"<strong>Solltiefe:</strong> {soll:.2f} m | " if soll else ""
                 st.markdown(f"""<div style='
                     background: #f4f8fc;
                     border-radius: 8px;
@@ -398,9 +391,8 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     margin-bottom: 6px;
                     font-size: 0.95rem;
                     color: #222;'>
-                    <strong>{name}</strong> | {soll_text}{minutes} min
+                    <strong>{name}</strong> – {soll_text}{minutes} min
                 </div>""", unsafe_allow_html=True)
-
 
             ausserhalb_min = bagger_zeiten.get("außerhalb", 0.0)
             if ausserhalb_min > 0:
@@ -408,19 +400,16 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     background: #fff3f3;
                     border-radius: 8px;
                     padding: 6px 10px;
-                    margin-top: 0px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
                     color: #aa0000;'>
-                    außerhalb | {ausserhalb_min} min
+                    <strong>außerhalb</strong> – {ausserhalb_min} min
                 </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown("keine Polygone eingeladen")
 
-    # Verbringfelder
-    df_verbring = df[df["Status"] == 4]
-    verbring_zeiten = berechne_minuten(verbring_namen, df_verbring)
 
+    # --------------------------------------------------------------------------------------------------
+    # 🟩 Verbringfelder anzeigen
+    # --------------------------------------------------------------------------------------------------
     with col_feld2:
         st.markdown("#### Verbringstelle")
         if verbring_zeiten:
@@ -435,7 +424,7 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     margin-bottom: 6px;
                     font-size: 0.95rem;
                     color: #222;'>
-                    <strong>{name}</strong> | {minutes} min
+                    <strong>{name}</strong> – {minutes} min
                 </div>""", unsafe_allow_html=True)
 
             ausserhalb_min = verbring_zeiten.get("außerhalb", 0.0)
@@ -444,13 +433,11 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     background: #fff3f3;
                     border-radius: 8px;
                     padding: 6px 10px;
-                    margin-top: 0px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
                     color: #aa0000;'>
-                    außerhalb | {ausserhalb_min} min
+                    <strong>außerhalb</strong> – {ausserhalb_min} min
                 </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(" ")
+
 
 
