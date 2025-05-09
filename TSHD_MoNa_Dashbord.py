@@ -12,6 +12,9 @@ import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erke
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
 
+import os
+from datetime import datetime
+
 # === 📊 UI & VISUALISIERUNG ===
 import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
 import plotly.graph_objects as go    # Interaktive Diagramme (z. B. Zeitreihen, Karten, Tooltips)
@@ -190,8 +193,9 @@ if uploaded_files:
         # Automatische Erkennung des Koordinatensystems (z.B. UTM, GK)
         if 'df' in locals() and not df.empty:
             proj_system, epsg_code, auto_erkannt = erkenne_koordinatensystem(
-                df, st=koordsys_status, sidebar=st.sidebar
+                df, st=st, status_element=koordsys_status
             )
+
         
         # --- Basis-Infos extrahieren (Schiffsname, Zeitbereich) ---
         schiffe = df["Schiffsname"].dropna().unique()
@@ -217,7 +221,6 @@ if uploaded_files:
         meta_info.markdown(f"""
         {schiffsname_text}  
         **Zeitraum:** {df["timestamp"].min().strftime('%d.%m.%Y %H:%M:%S')} – {df["timestamp"].max().strftime('%d.%m.%Y %H:%M:%S')} UTC  
-        **Baggerseite:** *(wird noch erkannt...)*
         """)
         
         # 🎯 Schiffsparameter laden und prüfen
@@ -246,14 +249,27 @@ if uploaded_files:
 #==============================================================================================================================
 
         # 📋 Schiffsparameter bearbeiten und speichern
+
         with st.sidebar.expander("🔧 Schiffsparameter bearbeiten", expanded=False):
         
             if len(schiffe) == 1:
                 schiff = schiffe[0]
                 st.markdown(f"**Aktives Schiff:** {schiff}")
         
-                # Bestehende Werte laden oder leeres Template anlegen
+                # 🧭 Baggerseite wählen
                 aktuelle_param = schiffsparameter.get(schiff, {})
+                gespeicherte_seite = aktuelle_param.get("Baggerseite", "BB")
+                erkannte_seite = erkenne_baggerseite(df)
+        
+                seite_auswahl = st.selectbox(
+                    "🧭 Baggerseite wählen",
+                    options=["Auto", "BB", "SB", "BB+SB"],
+                    index=["Auto", "BB", "SB", "BB+SB"].index(gespeicherte_seite)
+                )
+                seite = erkannte_seite if seite_auswahl == "Auto" else seite_auswahl
+        
+
+                # 📋 Bearbeitbare Schiffswerte
                 alle_spalten = [
                     'Tiefgang_vorne', 'Tiefgang_hinten', 'Verdraengung',
                     'Tiefe_Kopf_BB', 'Tiefe_Kopf_SB',
@@ -269,7 +285,6 @@ if uploaded_files:
                     'Druck_Druckwasserpumpe_BB', 'Druck_Druckwasserpumpe_SB',
                 ]
         
-                # Parameter in DataFrame umwandeln für Editierung
                 daten = []
                 for spalte in alle_spalten:
                     min_val = aktuelle_param.get(spalte, {}).get("min", None)
@@ -288,21 +303,36 @@ if uploaded_files:
                     hide_index=True
                 )
         
+
                 if st.button("💾 Speichern für dieses Schiff"):
-                    # Update JSON-Objekt
-                    schiffsparameter[schiff] = {
+                    # Bestehende Strategie und Baggerseite sichern
+                    bestehende_daten = schiffsparameter.get(schiff, {})
+                    strategie_alt = bestehende_daten.get("StartEndStrategie", {})
+                    bagger_alt = seite_auswahl
+                
+                    # Neue Parametertabelle aus der Editor-Tabelle
+                    neue_param = {
                         row["Spalte"]: {
                             "min": row["min"] if pd.notnull(row["min"]) else None,
                             "max": row["max"] if pd.notnull(row["max"]) else None
                         }
                         for _, row in edited_df.iterrows()
                     }
-                    # Schreiben in JSON-Datei
+                
+                    # Alles kombinieren und speichern
+                    schiffsparameter[schiff] = {
+                        **neue_param,
+                        "Baggerseite": bagger_alt,
+                        "StartEndStrategie": strategie_alt
+                    }
+                
                     with open("schiffsparameter.json", "w", encoding="utf-8") as f:
                         json.dump(schiffsparameter, f, indent=2, ensure_ascii=False)
+                
                     st.success("✅ Parameter gespeichert.")
             else:
                 st.info("Bitte lade MoNa-Daten mit eindeutigem Schiffsname.")
+                
 
             # --- Erweiterung: Zeige die Start-/End-Strategie, wenn vorhanden ---
             if "StartEndStrategie" in aktuelle_param:
@@ -324,6 +354,9 @@ if uploaded_files:
 #==============================================================================================================================
 # 🔵 Filterleiste und Grundeinstellungen
 #==============================================================================================================================
+
+        def reset_umlauf_auf_alle():
+            st.session_state.umlauf_auswahl = "Alle"
 
 # --- Filteroptionen direkt vor der Hauptanzeige ---
         st.markdown("---")
@@ -351,7 +384,9 @@ if uploaded_files:
             
             umlauf_auswahl = st.selectbox(
                 "🔁 Umlauf auswählen",
-                options=umlauf_options
+                options=umlauf_options,
+                index=umlauf_options.index("Alle") if "Alle" in umlauf_options else 0,
+                key="umlauf_auswahl"
             )
 
         # Zeitformat wählen (hh:mm:ss, Dezimalminuten, Dezimalstunden)
@@ -410,22 +445,9 @@ if uploaded_files:
 #==============================================================================================================================
 
 # Auswahl der Baggerseite (Auto / BB / SB / BB+SB)
-        seite_auswahl = st.sidebar.selectbox(
-            "🧭 Baggerseite wählen",
-            options=["Auto", "BB", "SB", "BB+SB"],
-            index=1
-        )
 
-        # Automatische Erkennung der Seite (aus den Daten)
-        erkannte_seite = erkenne_baggerseite(df)
         seite = erkannte_seite if seite_auswahl == "Auto" else seite_auswahl
-
-        # Metadaten aktualisieren
-        meta_info.markdown(f"""
-        {schiffsname_text}  
-        **Zeitraum:** {df["timestamp"].min().strftime('%d.%m.%Y %H:%M:%S')} – {df["timestamp"].max().strftime('%d.%m.%Y %H:%M:%S')} UTC  
-        **Baggerseite:** {seite}
-        """)
+        
 
 #==============================================================================================================================
 # 🔵 Rechtswerte normalisieren (nur für UTM)
@@ -499,12 +521,7 @@ if uploaded_files:
             anzeige_solltiefe = " "
             anzeige_m = ""
 
-        meta_info.markdown(f"""
-        {schiffsname_text}  
-        **Zeitraum:** {df["timestamp"].min().strftime('%d.%m.%Y %H:%M:%S')} – {df["timestamp"].max().strftime('%d.%m.%Y %H:%M:%S')} UTC  
-        **Baggerseite:** {seite}  
-        **Solltiefe:** {anzeige_solltiefe}{anzeige_m} ({solltiefe_herkunft})
-        """)
+
         # ------------------------------------------------------------------------------------------------------------------
         # 🎨 HTML-Styling für KPI-Panels
         # ------------------------------------------------------------------------------------------------------------------
@@ -530,13 +547,14 @@ if uploaded_files:
 #==============================================================================================================================
 
 # Tabs für die verschiedenen Visualisierungen
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "🗺️ Karte",
             "📊 Prozessdaten",
             "🌊 Tiefenprofil",
-            "🧾 Umlauftabelle",
-            "🧮 Umlaufanalyse",
-            "🧷 Übersicht + Details"
+            "🧾 Umlauftabellen",
+            "🧾 Umlauftabellen - TDS",
+            "🧪 Debug",
+            "💾 Export"
         ])
 
 #==============================================================================================================================
@@ -562,10 +580,6 @@ if uploaded_files:
                     tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
-        
-                    # Panels und Felder
-                    #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
-                    #st.markdown("---")
                     
                     # Berechnung der Zeiten aus Polygonauswertung
                     bagger_df = berechne_punkte_und_zeit(df, statuswert=2)
@@ -574,6 +588,10 @@ if uploaded_files:
                     verbring_df = berechne_punkte_und_zeit(df, statuswert=4)
                     verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
                     
+                # --------------------------------------------------------------------------------------------------------------------
+                # 📌 Anzeige Bagger- und Verbringfelder in Panel-Stil
+                # --------------------------------------------------------------------------------------------------------------------                   
+                    
                     zeige_bagger_und_verbringfelder(
                         bagger_namen=bagger_namen,
                         verbring_namen=verbring_namen,
@@ -581,17 +599,12 @@ if uploaded_files:
                         baggerfelder=baggerfelder  # ❗️wichtig!
                     )
 
-                    
-                    #zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
-                    
-                    #st.markdown("---")        
+                     
+  
             # Kartenansicht vorbereiten
             zeit_suffix = "UTC" if zeitzone == "UTC" else "Lokal"
             col1, col2 = st.columns(2)
-
-
-                
-    
+  
         # -------------------------------------------------------------------------------------------------------------------------
         # Darstellung der Kartenansichten in zwei Spalten (links = Baggern, rechts = Verbringen)
         # -------------------------------------------------------------------------------------------------------------------------
@@ -660,17 +673,21 @@ if uploaded_files:
                 # Überschrift und Karte darstellen
                 #st.markdown("#### Verbringstelle")
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
+                
+            # ----------------------------------------------------------------------------------------------------------------------
+            # 📍 Streckenanzeige pro Umlauf
+            # ----------------------------------------------------------------------------------------------------------------------
+            
+            if kennzahlen: 
+                st.markdown("#### Strecken im Umlauf")               
+                zeige_strecken_panels(
+                    strecke_disp["leerfahrt"], strecke_disp["baggern"], strecke_disp["vollfahrt"],
+                    strecke_disp["verbringen"], strecke_disp["gesamt"],
+                    dauer_disp["leerfahrt"], dauer_disp["baggern"], dauer_disp["vollfahrt"],
+                    dauer_disp["verbringen"], dauer_disp["umlauf"],
+                    strecken_panel_template
+                )
 
-
-            with st.expander("📊 Verweilzeiten pro Polygon"):
-                df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
-                df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
-    
-                st.write("**Baggerzeiten pro Feld (Status 2):**")
-                st.dataframe(df_bagger)
-    
-                st.write("**Verbringzeiten pro Feld (Status 4):**")
-                st.dataframe(df_verbring)
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
@@ -692,9 +709,21 @@ if uploaded_files:
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
         
-                    # Panels und Prozessgrafik anzeigen
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
+                # ----------------------------------------------------------------------------------------------------------------------
                     zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
+                    
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📦 Baggerdaten als Diagramm
+                # ----------------------------------------------------------------------------------------------------------------------                    
                     zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
+
+                # ----------------------------------------------------------------------------------------------------------------------
+                # 📊 Zeitliche Phasen anzeigen (Leerfahrt, Baggern und Strecken)
+                # ----------------------------------------------------------------------------------------------------------------------
+                    zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
+        
         
                 else:
                     st.warning("⚠️ Kein Datensatz zum gewählten Umlauf gefunden.")
@@ -710,7 +739,15 @@ if uploaded_files:
         with tab3:
             st.markdown("#### Baggerkopftiefe")
             if umlauf_auswahl != "Alle":
-                zeige_baggerkopftiefe_grafik(df, zeitzone, seite)
+                zeige_baggerkopftiefe_grafik(
+                    df,
+                    zeitzone,
+                    seite,
+                    solltiefe=solltiefe_slider if solltiefe_wert is None else None,
+                    toleranz_oben=toleranz_oben,
+                    toleranz_unten=toleranz_unten
+                )
+
         
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
@@ -718,74 +755,209 @@ if uploaded_files:
 #==============================================================================================================================
 # Tab 4 - Umlauftabelle - gesamt 
 #==============================================================================================================================
- 
 
-            with tab4:
-                st.markdown("#### Auflistung aller Umläufe")
+
+        with tab4:
+            st.markdown("#### Auflistung aller Umläufe")
+        
+            if not umlauf_info_df.empty:
+                # ✅ Extrahiere ALLE Umlauf-Startzeiten (unabhängig von Filtersicht)
+                umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
+        
+                # 📅 Erzeuge Tabelle mit einzelnen Umläufen und ihren Zeitabschnitten
+                df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
+                    umlauf_info_df, zeitzone, zeitformat
+                )
+        
+                # ⏱️ Berechne aufaddierte Gesamtzeiten
+                gesamtzeiten = berechne_gesamtzeiten(list_leer, list_bagg, list_voll, list_verk, list_umlauf)
+        
+                # 🧾 Zeige Tabellen für Umläufe und Gesamtzeiten
+                df_gesamt = show_gesamtzeiten_dynamisch(
+                    gesamtzeiten["leerfahrt"], gesamtzeiten["baggern"],
+                    gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
+                    gesamtzeiten["umlauf"], zeitformat=zeitformat
+                )
+                st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
+                st.markdown("#### Aufsummierte Dauer")
+                st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
+        
+
+                
+            else:
+                st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
+# ======================================================================================================================
+# # Tab 5 - Umlauftabelle - TDS 
+# ======================================================================================================================
+
+        with tab5:
+            if umlauf_auswahl == "Alle":
+                st.markdown("#### TDS Berechnung pro Umlauf")
             
                 if not umlauf_info_df.empty:
-                    # ✅ Immer ALLE Umläufe sichern, bevor ggf. Filterung stattfindet
-                    umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
             
-                    # 🧾 Umlauftabelle und Gesamtzeiten berechnen
-                    df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
-                        umlauf_info_df, zeitzone, zeitformat
-                    )
+                    # -------------------------------------------------------------------------------------------------------------
+                    # 📂 CSV-Import manuell erfasster Feststoffdaten (im Expander versteckt)
+                    # -------------------------------------------------------------------------------------------------------------
+                    col_upload, col_export = st.columns([1, 1])
             
-                    gesamtzeiten = berechne_gesamtzeiten(list_leer, list_bagg, list_voll, list_verk, list_umlauf)
-                    df_gesamt = show_gesamtzeiten_dynamisch(
-                        gesamtzeiten["leerfahrt"], gesamtzeiten["baggern"],
-                        gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
-                        gesamtzeiten["umlauf"], zeitformat=zeitformat
-                    )
+                    with col_upload:
+                        with st.expander("📂 Import von manuellen Feststoffwerten"):
+                            st.markdown("##### 📥 CSV-Datei importieren")
             
-                    # 📊 Tabellen anzeigen
-                    st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
-                    st.markdown("#### Aufsummierte Dauer")
-                    st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
+                            uploaded_csv = st.file_uploader(
+                                label="",
+                                type=["csv"],
+                                key="upload_manuell",
+                                help="CSV mit: timestamp_beginn_baggern, feststoff, proz_wert"
+                            )
             
-                    # ------------------------------------------------------------------------------------
-                    # 📦 Optional: TDS-Tabelle für alle Umläufe generieren
-                    # ------------------------------------------------------------------------------------
-           
-                    st.markdown("---")
-                    st.markdown("#### Übersicht: TDS-Kennzahlen je Umlauf")
+                            if uploaded_csv:
+                                # ⬇️ CSV einlesen und Zeitspalte korrekt parsen
+                                df_csv = pd.read_csv(uploaded_csv, parse_dates=["timestamp_beginn_baggern"])
             
-                    # 🔘 Button zum Start der Berechnung
-                    if st.button("🔄 TDS-Tabelle berechnen"):
-                        with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
+                                # 🧱 Basis: alle erkannten Umläufe
+                                df_basis = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                                df_basis = df_basis.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+            
+                                # 🔀 Mergen: CSV-Werte mit Basisdaten kombinieren
+                                df_merged = pd.merge(
+                                    df_basis,
+                                    df_csv,
+                                    on="timestamp_beginn_baggern",
+                                    how="left",
+                                    suffixes=("", "_csv")
+                                )
+            
+                                # 🧪 Werte aus CSV übernehmen, nur wenn vorhanden
+                                if "feststoff_csv" in df_merged.columns:
+                                    df_merged["feststoff"] = df_merged["feststoff"].combine_first(df_merged["feststoff_csv"])
+                                if "proz_wert_csv" in df_merged.columns:
+                                    df_merged["proz_wert"] = df_merged["proz_wert"].combine_first(df_merged["proz_wert_csv"])
+            
+                                # 🧹 Nur benötigte Spalten behalten
+                                df_final = df_merged[["Umlauf", "timestamp_beginn_baggern", "feststoff", "proz_wert"]]
+            
+                                # 💾 Im Session State speichern
+                                st.session_state["df_manuell"] = df_final
+            
+                                st.success(f"{df_csv.shape[0]} Einträge geladen und mit Umläufen kombiniert.")
+            
+                    # -------------------------------------------------------------------------------------------------------------
+                    # 🔄 Automatischer Neuaufbau von df_manuell, falls neue Umläufe erkannt wurden
+                    # -------------------------------------------------------------------------------------------------------------
+                    neue_umlaeufe = set(umlauf_info_df_all["Umlauf"])
+                    vorhandene_umlaeufe = set(st.session_state.get("df_manuell", pd.DataFrame()).get("Umlauf", []))
+            
+                    if neue_umlaeufe != vorhandene_umlaeufe:
+                        df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                        df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                        df_manuell["feststoff"] = None
+                        df_manuell["proz_wert"] = None
+                        st.session_state["df_manuell"] = df_manuell
+            
+                    # -------------------------------------------------------------------------------------------------------------
+                    # ✏️ Eingabeformular für manuelle Werte + Berechnung + Export
+                    # -------------------------------------------------------------------------------------------------------------
+    
+                    with st.expander("✏️ Eingabe manueller Feststoffwerte"):        
+                        with st.form("eingabe_und_berechnung_form"):
+                            # 📄 Initialaufbau, falls noch kein df_manuell existiert
+                            if "df_manuell" not in st.session_state:
+                                if "Start Baggern" in umlauf_info_df_all.columns:
+                                    df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                                    df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                                    df_manuell["feststoff"] = None
+                                    df_manuell["proz_wert"] = None
+                                    st.session_state["df_manuell"] = df_manuell
+                                else:
+                                    st.warning("⚠️ 'Start Baggern' nicht vorhanden.")
+                                    st.stop()
+                
+                            # 👁️ Editor anzeigen
+                            df_editor = st.session_state["df_manuell"].copy()
+                            df_editor_display = st.data_editor(
+                                df_editor,
+                                num_rows="dynamic",
+                                use_container_width=True,
+                                column_config={
+                                    "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern"),
+                                    "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
+                                    "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
+                                },
+                                hide_index=True
+                            )
+                
+                            # ☑️ Button: alles auf einmal
+                            submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
+                
+                        if submitted:
+                            # 💾 Manuelle Eingaben übernehmen
+                            st.session_state["df_manuell"] = df_editor_display.copy()
+                
+                            # 🧠 Strategie auslesen oder Defaults setzen
                             strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
                             if not strategie:
                                 strategie = {
                                     "Verdraengung": {"Start": "standard", "Ende": "standard"},
                                     "Ladungsvolumen": {"Start": "standard", "Ende": "standard"}
                                 }
+                
+                            # 🧮 Berechnung starten
+                            with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
+                                df_tabelle = erzeuge_tds_tabelle(
+                                    df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+                                )
+                                st.session_state["tds_df"] = df_tabelle
+                
+                                # 📤 CSV vorbereiten
+                                from datetime import datetime
+                                now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                                df_export = st.session_state["df_manuell"]
+                                csv_data = df_export.to_csv(index=False).encode("utf-8")
+                                filename = f"{now_str}_manuell_feststoff.csv"
+                
+                                # 🗂️ Für Export vorbereiten
+                                st.session_state["export_ready"] = True
+                                st.session_state["export_csv"] = csv_data
+                                st.session_state["export_filename"] = filename
+                
+                                st.success("✅ Eingaben gespeichert, TDS-Tabelle berechnet & CSV bereit zum Download.")
             
-                            # 🔁 Immer ALLE Umläufe an erzeuge_tds_tabelle übergeben
-                            st.session_state["tds_df"] = erzeuge_tds_tabelle(
-                                df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-                            )
-                            #st.success("✅ TDS-Tabelle erfolgreich berechnet.")
+                    # -------------------------------------------------------------------------------------------------------------
+                    # 💾 Optionaler Download-Button anzeigen
+                    # -------------------------------------------------------------------------------------------------------------
+                    if st.session_state.get("export_ready"):
+                        st.download_button(
+                            label="⬇️ CSV wurde vorbereitet – hier klicken zum Speichern",
+                            data=st.session_state["export_csv"],
+                            file_name=st.session_state["export_filename"],
+                            mime="text/csv"
+                        )
+                        st.session_state["export_ready"] = False
             
-                    # 📊 Anzeige aus Cache, falls vorhanden
+                    # -------------------------------------------------------------------------------------------------------------
+                    # 📊 TDS-Ergebnis-Tabelle anzeigen
+                    # -------------------------------------------------------------------------------------------------------------
                     if "tds_df" in st.session_state:
+    
                         st.dataframe(style_tds_tabelle(st.session_state["tds_df"]), use_container_width=True, hide_index=True)
-
                     else:
-                        st.info("🔹 Noch keine TDS-Tabelle berechnet. Klick oben auf den Button.")
-            
-                else:
-                    st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
-            
-                    
-
-               
+                        st.info("🔹 Noch keine TDS-Tabelle berechnet.")
+            else:
+                st.markdown("""
+                <div style="color:#31708f;background-color:#d9edf7;padding:10px;border-radius:5px;">
+                ⚠️ Aktuell ist ein Umlauf ausgewählt.<br>
+                Dieser Bereich ist nur verfügbar, wenn <strong>🔁 Umlauf wählen</strong> auf <strong>Alle</strong> gesetzt ist.
+                </div>
+                """, unsafe_allow_html=True)
+                 
 
 # ======================================================================================================================
-# TAB 5 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
+# TAB 6 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
 # ======================================================================================================================
         
-        with tab5:
+        with tab6:
 
             if umlauf_auswahl != "Alle":
                 row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
@@ -825,17 +997,17 @@ if uploaded_files:
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
                 # ----------------------------------------------------------------------------------------------------------------------
-                st.markdown("---")
-                st.markdown("#### Baggerwerte im Umlauf", unsafe_allow_html=True)
-                if kennzahlen:
+                    st.markdown("---")
+                    st.markdown("#### Baggerwerte im Umlauf", unsafe_allow_html=True)
+   
                     zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
                 
                 # ----------------------------------------------------------------------------------------------------------------------
-                # 📍 Streckenanzeige pro Phase
+                # 📍 Streckenanzeige pro Umlauf
                 # ----------------------------------------------------------------------------------------------------------------------
-                st.markdown("---")
-                st.markdown("#### Strecken im Umlauf")
-                if kennzahlen:                
+                    st.markdown("---")
+                    st.markdown("#### Strecken im Umlauf")
+              
                     zeige_strecken_panels(
                         strecke_disp["leerfahrt"], strecke_disp["baggern"], strecke_disp["vollfahrt"],
                         strecke_disp["verbringen"], strecke_disp["gesamt"],
@@ -843,71 +1015,72 @@ if uploaded_files:
                         dauer_disp["verbringen"], dauer_disp["umlauf"],
                         strecken_panel_template
                     )
-
-              
                 # ----------------------------------------------------------------------------------------------------------------------
-                # 🛠️ Debug-Infos (ausklappbar) – Strategie-Auswertung und Werte anzeigen
+                # 📊 Zeitliche Phasen anzeigen (Leerfahrt, Baggern und Strecken)
                 # ----------------------------------------------------------------------------------------------------------------------
-                st.markdown("---")
-                with st.expander("🛠️ Debug-Infos & Strategieergebnisse", expanded=False):
-                    st.markdown(f"🔍 **Strategie Verdraengung**: `{strategie.get('Verdraengung', {})}`")
-                    st.markdown(f"🔍 **Strategie Ladungsvolumen**: `{strategie.get('Ladungsvolumen', {})}`")
-                
-                    for zeile in debug_info:
-                        st.markdown(zeile)
-                
-                    st.markdown("### 📋 Übersicht Start-/Endwerte laut Strategie")
-                
-                    werte_tabelle = pd.DataFrame([
-                        {
-                            "Parameter": "Verdraengung Start",
-                            "Wert": f"{werte['Verdraengung Start']:.2f}" if werte.get("Verdraengung Start") is not None else "-",
-                            "Zeitstempel": sichere_zeit(werte.get("Verdraengung Start TS"), zeitzone)
-                        },
-                        {
-                            "Parameter": "Verdraengung Ende",
-                            "Wert": f"{werte['Verdraengung Ende']:.2f}" if werte.get("Verdraengung Ende") is not None else "-",
-                            "Zeitstempel": sichere_zeit(werte.get("Verdraengung Ende TS"), zeitzone)
-                        },
-                        {
-                            "Parameter": "Ladungsvolumen Start",
-                            "Wert": f"{werte['Ladungsvolumen Start']:.2f}" if werte.get("Ladungsvolumen Start") is not None else "-",
-                            "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Start TS"), zeitzone)
-                        },
-                        {
-                            "Parameter": "Ladungsvolumen Ende",
-                            "Wert": f"{werte['Ladungsvolumen Ende']:.2f}" if werte.get("Ladungsvolumen Ende") is not None else "-",
-                            "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Ende TS"), zeitzone)
-                        }
-                    ])
-                
-                    st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
-            else:
-                st.info("Bitte einen konkreten Umlauf auswählen.")
+                    st.markdown("---")  
 
-#==============================================================================================================================
-# Tab - Umlauftabelle - gesamt 
-#==============================================================================================================================
+                    st.markdown("#### Statuszeiten und Strecken im Umlauf", unsafe_allow_html=True)
+                    zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
+           
+                
+                    # ----------------------------------------------------------------------------------------------------------------------
+                    # 🛠️ Debug-Infos (ausklappbar) – Strategie-Auswertung und Werte anzeigen
+                    # ----------------------------------------------------------------------------------------------------------------------
+                    st.markdown("---")   
+                    with st.expander("🛠️ Debug-Infos & Strategieergebnisse", expanded=False):
+                        st.markdown(f"🔍 **Strategie Verdraengung**: `{strategie.get('Verdraengung', {})}`")
+                        st.markdown(f"🔍 **Strategie Ladungsvolumen**: `{strategie.get('Ladungsvolumen', {})}`")
+                    
+                        for zeile in debug_info:
+                            st.markdown(zeile)
+                    
+                        st.markdown("### 📋 Übersicht Start-/Endwerte laut Strategie")
+                    
+                        werte_tabelle = pd.DataFrame([
+                            {
+                                "Parameter": "Verdraengung Start",
+                                "Wert": f"{werte['Verdraengung Start']:.2f}" if werte.get("Verdraengung Start") is not None else "-",
+                                "Zeitstempel": sichere_zeit(werte.get("Verdraengung Start TS"), zeitzone)
+                            },
+                            {
+                                "Parameter": "Verdraengung Ende",
+                                "Wert": f"{werte['Verdraengung Ende']:.2f}" if werte.get("Verdraengung Ende") is not None else "-",
+                                "Zeitstempel": sichere_zeit(werte.get("Verdraengung Ende TS"), zeitzone)
+                            },
+                            {
+                                "Parameter": "Ladungsvolumen Start",
+                                "Wert": f"{werte['Ladungsvolumen Start']:.2f}" if werte.get("Ladungsvolumen Start") is not None else "-",
+                                "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Start TS"), zeitzone)
+                            },
+                            {
+                                "Parameter": "Ladungsvolumen Ende",
+                                "Wert": f"{werte['Ladungsvolumen Ende']:.2f}" if werte.get("Ladungsvolumen Ende") is not None else "-",
+                                "Zeitstempel": sichere_zeit(werte.get("Ladungsvolumen Ende TS"), zeitzone)
+                            }
+                        ])
+                    
+                        st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
+                        
+                    # ----------------------------------------------------------------------------------------------------------------------
+                    # 📊 Debug-Infos (ausklappbar) – Verweilzeiten pro Polygon
+                    # ----------------------------------------------------------------------------------------------------------------------
+                                        
+                    with st.expander("📊 Verweilzeiten pro Polygon"):
+                        df_bagger = berechne_punkte_und_zeit(df, statuswert=2)
+                        df_verbring = berechne_punkte_und_zeit(df, statuswert=4)
             
-        with tab6:
-            if umlauf_auswahl != "Alle":
-                #zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df)
-                #st.markdown("---")
-
-                zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
-
-                #zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template)
-        
-                zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab6")
-        
-                zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
-        
-
-                    
-                    
-        
+                        st.write("**Baggerzeiten pro Feld (Status 2):**")
+                        st.dataframe(df_bagger)
+            
+                        st.write("**Verbringzeiten pro Feld (Status 4):**")
+                        st.dataframe(df_verbring)                    
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
+
+          
+
+
 
 #=====================================================================================
     except Exception as e:

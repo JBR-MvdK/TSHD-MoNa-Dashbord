@@ -189,7 +189,8 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📏 zeige_baggerkopftiefe_grafik – Separate Grafik zur Darstellung der Baggertiefe (nur Status 2)
 # -------------------------------------------------------------------------------------------------------------------------------
-def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB"):
+def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, toleranz_oben=0.5, toleranz_unten=0.5):
+
     """
     Zeigt die absolute Tiefe des Baggerkopfs im Vergleich zur Solltiefe über die Zeit.
     
@@ -200,6 +201,14 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB"):
 
     # 🧹 Vorverarbeitung: sortiere nach Zeit und setze Index zurück
     df_plot = df.copy().sort_values("timestamp").reset_index(drop=True)
+
+    # Ergänze manuelle Solltiefe, falls keine aus XML vorhanden ist
+    if solltiefe is not None:
+        if "Solltiefe_Aktuell" not in df_plot.columns or df_plot["Solltiefe_Aktuell"].isna().all():
+            df_plot["Solltiefe_Aktuell"] = solltiefe
+            df_plot["Solltiefe_Oben"] = solltiefe + toleranz_oben
+            df_plot["Solltiefe_Unten"] = solltiefe - toleranz_unten
+
 
     # 🔧 Kurvenkonfiguration: welche Linien sollen geplottet werden?
     kurven_abs_tiefe = [
