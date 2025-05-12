@@ -123,10 +123,13 @@ def berechne_gesamtzeiten(dauer_leerfahrt_list, dauer_baggern_list, dauer_vollfa
 # 📈 TDS-Tabelle erzeugen (inkl. manuelle Eingaben und Berechnungen)
 # -----------------------------------------------------------------------------------------------------
 def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
-    daten = []
-    df_manuell = st.session_state.get("df_manuell", pd.DataFrame())
+    daten = []          # Formatierte Werte mit Einheiten (für Anzeige)
+    daten_export = []   # Reine Zahlenwerte (für Excel-Export)
 
-    # ⏰ Zeitspalte korrekt formatieren
+    df_manuell = st.session_state.get("df_manuell", pd.DataFrame())
+    kumuliert_feststoff = 0  # Für die summierte Darstellung
+
+    # ⏰ Zeitstempel vorbereiten/vereinheitlichen
     if not df_manuell.empty:
         if not pd.api.types.is_datetime64_any_dtype(df_manuell["timestamp_beginn_baggern"]):
             df_manuell["timestamp_beginn_baggern"] = pd.to_datetime(df_manuell["timestamp_beginn_baggern"], errors="coerce")
@@ -135,10 +138,12 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         else:
             df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
 
+    # 🔁 Alle Umläufe iterieren
     for _, row in umlauf_info_df.iterrows():
         feststoff_manuell, proz = None, None
         row_time = pd.to_datetime(row.get("Start Baggern"), utc=True)
 
+        # 🔎 Passende manuelle Eingaben finden
         if not df_manuell.empty:
             treffer = df_manuell[df_manuell["timestamp_beginn_baggern"] == row_time]
             if not treffer.empty:
@@ -146,14 +151,17 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 proz = treffer.iloc[0].get("proz_wert")
 
         try:
+            # ⏱ Kontext-Zeitraum um den Umlauf festlegen
             t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
             t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
             df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
 
+            # 🧮 TDS-Kennzahlen berechnen
             tds, werte, _, *_ = berechne_umlauf_auswertung(
                 df_context, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
             )
 
+            # 🌊 Rohdaten entnehmen
             leer_masse = werte.get("Verdraengung Start")
             voll_masse = werte.get("Verdraengung Ende")
             diff_masse = voll_masse - leer_masse if None not in [leer_masse, voll_masse] else None
@@ -162,7 +170,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             voll_vol = werte.get("Ladungsvolumen Ende")
             diff_vol = voll_vol - leer_vol if None not in [leer_vol, voll_vol] else None
 
-            # ➕ Manuelle Berechnung
+            # ➕ Manuelle Berechnung: Volumen + Zentrifuge
             if feststoff_manuell is not None and proz is not None and voll_vol is not None:
                 gemisch = voll_vol - feststoff_manuell
                 feststoff_gemisch = gemisch * (proz / 100)
@@ -170,6 +178,11 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             else:
                 gemisch = feststoff_gemisch = feststoff_volumen = None
 
+            # ➕ Kumuliert
+            if feststoff_volumen is not None:
+                kumuliert_feststoff += feststoff_volumen
+
+            # 📋 Formatierte Zeile für Anzeige
             zeile = [
                 row["Umlauf"],
                 format_de(leer_masse, 0) + " t",
@@ -179,20 +192,46 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(voll_vol, 0) + " m³",
                 format_de(diff_vol, 0) + " m³",
                 format_de(tds.get("ladungsdichte"), 2) + " t/m³",
+                format_de(tds.get("feststoffkonzentration") * 100, 1) + " %" if tds.get("feststoffkonzentration") is not None else "-",
+                format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
-                # Manuelle Werte
                 format_de(voll_vol, 0) + " m³" if voll_vol else "-",
                 format_de(feststoff_manuell, 0) + " m³" if feststoff_manuell else "-",
                 format_de(gemisch, 0) + " m³" if gemisch else "-",
                 format_de(proz, 1) + " %" if proz else "-",
                 format_de(feststoff_gemisch, 0) + " m³" if feststoff_gemisch else "-",
-                format_de(feststoff_volumen, 0) + " m³" if feststoff_volumen else "-"
+                format_de(feststoff_volumen, 0) + " m³" if feststoff_volumen else "-",
+                format_de(kumuliert_feststoff, 0) + " m³" if kumuliert_feststoff else "-"
             ]
         except Exception:
-            zeile = [row["Umlauf"]] + ["-"] * 14
+            zeile = [row["Umlauf"]] + ["-"] * 17
 
         daten.append(zeile)
 
+        # 📦 Rohwerte für Excel-Export (ohne Formatierung)
+        zeile_export = [
+            row["Umlauf"],
+            leer_masse,
+            voll_masse,
+            diff_masse,
+            leer_vol,
+            voll_vol,
+            diff_vol,
+            tds.get("ladungsdichte"),
+            tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
+            tds.get("feststoffvolumen"),
+            tds.get("feststoffmasse"),
+            voll_vol,
+            feststoff_manuell,
+            gemisch,
+            proz,
+            feststoff_gemisch,
+            feststoff_volumen,
+            kumuliert_feststoff
+        ]
+        daten_export.append(zeile_export)
+
+    # 🏷 Spaltenstruktur (MultiIndex für Anzeige)
     spalten = pd.MultiIndex.from_tuples([
         ("Umlauf", "Nr."),
         ("Ladungsmasse", "leer"),
@@ -201,17 +240,26 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Ladungsvolumen", "leer"),
         ("Ladungsvolumen", "voll"),
         ("Ladungsvolumen", "Differenz"),
-        ("Ladungsdichte", ""),
-        ("Feststoffmasse", ""),
+        ("Ladungs-", "dichte"),
+        ("Feststoff-", "Konzentr."),
+        ("Feststoff-", "Volumen"),
+        ("Feststoff-", "Masse"),
         ("Ladung", "voll"),
         ("Ladung", "Feststoff"),
         ("Gemisch", ""),
         ("Zentrifuge", ""),
         ("Feststoff", "Gemisch"),
-        ("Feststoff", "Gesamt")
+        ("Feststoff", "Gesamt"),
+        ("Feststoff", "Kumuliert")
     ])
 
-    return pd.DataFrame(daten, columns=spalten)
+    # 🔁 Rückgabe: Anzeige-Tabelle + Export-Tabelle
+    return (
+        pd.DataFrame(daten, columns=spalten),             # Anzeige (formatiert mit Einheiten)
+        pd.DataFrame(daten_export, columns=spalten)       # Export (Rohdaten, numerisch)
+    )
+
+
 
 
 

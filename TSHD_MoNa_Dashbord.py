@@ -11,7 +11,6 @@ import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern,
 import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
-
 import os
 from datetime import datetime
 
@@ -95,6 +94,7 @@ from modul_umlauftabelle import (
 # 🗺️ Darstellung der Tracks + Polygone auf interaktiven Karten
 from modul_karten import plot_karte, zeige_umlauf_info_karte
 
+from modul_daten_import import lade_excel_feststoffdaten
 
 #==============================================================================================================================
 # 🔵 Start der Streamlit App
@@ -355,39 +355,50 @@ if uploaded_files:
 # 🔵 Filterleiste und Grundeinstellungen
 #==============================================================================================================================
 
-        def reset_umlauf_auf_alle():
-            st.session_state.umlauf_auswahl = "Alle"
 
-# --- Filteroptionen direkt vor der Hauptanzeige ---
+
+        # --- Filteroptionen direkt vor der Hauptanzeige ---
         st.markdown("---")
         col_startwert, col_umlauf, col_zeitformat, col_zeitzone = st.columns([1, 1, 1, 1])
-
+        
         # Startwert der Umlaufzählung setzen
         with col_startwert:
             startwert = st.number_input("🔢 Startwert Umlaufzählung", min_value=1, step=1, value=1)
-
+        
         # --- Umläufe berechnen und Umlauftabelle extrahieren ---
         df = nummeriere_umlaeufe(df, startwert=startwert)
         umlauf_info_df = extrahiere_umlauf_startzeiten(df, startwert=startwert)
-
+        umlauf_info_df_all = umlauf_info_df.copy()
+        
         if not umlauf_info_df.empty:
             if "Start Leerfahrt" in umlauf_info_df.columns:
                 umlauf_info_df["start"] = umlauf_info_df["Start Leerfahrt"]
             if "Ende" in umlauf_info_df.columns:
                 umlauf_info_df["ende"] = umlauf_info_df["Ende"]
+        
 
         # Umlauf-Auswahl
         with col_umlauf:
             umlauf_options = ["Alle"]
             if not umlauf_info_df.empty and "Umlauf" in umlauf_info_df.columns:
                 umlauf_options += [int(u) for u in umlauf_info_df["Umlauf"]]
-            
+        
+            # 👉 Index dynamisch setzen
+            if st.session_state.get("bereit_fuer_berechnung", False):
+                selected_index = 0  # "Alle" steht immer an Index 0
+                #st.info("🛈 'Alle Umläufe' wurde automatisch ausgewählt.")
+            else:
+                selected_index = umlauf_options.index(
+                    st.session_state.get("umlauf_auswahl", "Alle")
+                ) if st.session_state.get("umlauf_auswahl", "Alle") in umlauf_options else 0
+        
             umlauf_auswahl = st.selectbox(
                 "🔁 Umlauf auswählen",
                 options=umlauf_options,
-                index=umlauf_options.index("Alle") if "Alle" in umlauf_options else 0,
+                index=selected_index,
                 key="umlauf_auswahl"
             )
+
 
         # Zeitformat wählen (hh:mm:ss, Dezimalminuten, Dezimalstunden)
         with col_zeitformat:
@@ -439,7 +450,6 @@ if uploaded_files:
         else:
             df_context = df.copy()  # Fallback: gesamter Datensatz
      
-
 #==============================================================================================================================
 # 🔵 Baggerseite erkennen und auswählen
 #==============================================================================================================================
@@ -627,20 +637,25 @@ if uploaded_files:
                     baggerfelder=baggerfelder
                 )
                 # Wenn Status 2-Daten vorhanden sind → Zoome auf den ersten Punkt
-                if not df_status2.empty:
+
+                if not df_status2.empty and not df_456.empty:
                     first_latlon = transformer.transform(df_status2.iloc[0]["RW_Schiff"], df_status2.iloc[0]["HW_Schiff"])
                     last_latlon = transformer.transform(df_456.iloc[-1]["RW_Schiff"], df_456.iloc[-1]["HW_Schiff"])
-
+                
                     fig.update_layout(
                         mapbox_center={"lat": first_latlon[1], "lon": first_latlon[0]},
                         mapbox_zoom=13
                     )
-                else:
+                elif df_status2.empty:
                     st.info("Keine Daten mit Status 2 verfügbar.")
+                elif df_456.empty:
+                    st.info("Keine letzten Punkte für Status 4-6 verfügbar.")
+
             
                 # Überschrift und Karte darstellen
                 #st.markdown("#### Baggerstelle")
-                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
+                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_baggerstelle")
+
             
             
             # -------------------------------------------------------------------------------------------------------------------------
@@ -660,6 +675,7 @@ if uploaded_files:
                     baggerfelder=baggerfelder
                 )
                 # Wenn Status 4/5/6-Daten vorhanden sind → Zoome auf den ersten Punkt
+
                 if not df_456.empty:
                     first_latlon = transformer.transform(df_456.iloc[0]["RW_Schiff"], df_456.iloc[0]["HW_Schiff"])
                     last_latlon = transformer.transform(df_456.iloc[-1]["RW_Schiff"], df_456.iloc[-1]["HW_Schiff"])
@@ -669,10 +685,13 @@ if uploaded_files:
                     )
                 else:
                     st.info("Keine Daten mit Status 4, 5 oder 6 verfügbar.")
+
             
                 # Überschrift und Karte darstellen
                 #st.markdown("#### Verbringstelle")
-                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
+                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_verbringstelle")
+
+
                 
             # ----------------------------------------------------------------------------------------------------------------------
             # 📍 Streckenanzeige pro Umlauf
@@ -762,7 +781,7 @@ if uploaded_files:
         
             if not umlauf_info_df.empty:
                 # ✅ Extrahiere ALLE Umlauf-Startzeiten (unabhängig von Filtersicht)
-                umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
+                #umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
         
                 # 📅 Erzeuge Tabelle mit einzelnen Umläufen und ihren Zeitabschnitten
                 df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erstelle_umlauftabelle(
@@ -790,168 +809,260 @@ if uploaded_files:
 # # Tab 5 - Umlauftabelle - TDS 
 # ======================================================================================================================
 
+        # Dieser Tab dient der Anzeige, Eingabe und Berechnung von TDS-Kennzahlen pro Umlauf
+        
         with tab5:
-            if umlauf_auswahl == "Alle":
-                st.markdown("#### TDS Berechnung pro Umlauf")
-            
-                if not umlauf_info_df.empty:
-            
-                    # -------------------------------------------------------------------------------------------------------------
-                    # 📂 CSV-Import manuell erfasster Feststoffdaten (im Expander versteckt)
-                    # -------------------------------------------------------------------------------------------------------------
-                    col_upload, col_export = st.columns([1, 1])
-            
-                    with col_upload:
-                        with st.expander("📂 Import von manuellen Feststoffwerten"):
-                            st.markdown("##### 📥 CSV-Datei importieren")
-            
-                            uploaded_csv = st.file_uploader(
-                                label="",
-                                type=["csv"],
-                                key="upload_manuell",
-                                help="CSV mit: timestamp_beginn_baggern, feststoff, proz_wert"
-                            )
-            
-                            if uploaded_csv:
-                                # ⬇️ CSV einlesen und Zeitspalte korrekt parsen
-                                df_csv = pd.read_csv(uploaded_csv, parse_dates=["timestamp_beginn_baggern"])
-            
-                                # 🧱 Basis: alle erkannten Umläufe
-                                df_basis = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
-                                df_basis = df_basis.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
-            
-                                # 🔀 Mergen: CSV-Werte mit Basisdaten kombinieren
+        
+            st.markdown("#### TDS Berechnung pro Umlauf")
+        
+            if not umlauf_info_df.empty:
+        
+                # -------------------------------------------------------------------------------------------------------------
+                # 📂 Importfunktion: Manuelle Feststoffdaten aus CSV oder Excel-Datei laden
+                # -------------------------------------------------------------------------------------------------------------
+                col_upload, col_export = st.columns([1, 1])
+        
+                with col_upload:
+                    with st.expander("📂 Import von manuellen Feststoffwerten (CSV oder Excel)"):
+                        uploaded_file = st.file_uploader(
+                            label="",
+                            type=["csv", "xlsx"],
+                            key="upload_manuell",
+                            help="CSV oder Excel mit: timestamp_beginn_baggern ODER Datum/Uhrzeit, Feststoff, Zentrifuge"
+                        )
+        
+                        if uploaded_file:
+        
+                            # CSV-Import
+                            if uploaded_file.name.endswith(".csv"):
+                                df_csv = pd.read_csv(uploaded_file, parse_dates=["timestamp_beginn_baggern"])
+                                if df_csv["timestamp_beginn_baggern"].dt.tz is None:
+                                    df_csv["timestamp_beginn_baggern"] = df_csv["timestamp_beginn_baggern"].dt.tz_localize("Europe/Berlin").dt.tz_convert("UTC")
+                                else:
+                                    df_csv["timestamp_beginn_baggern"] = df_csv["timestamp_beginn_baggern"].dt.tz_convert("UTC")
+                                merge_typ = "exact"
+        
+                            # Excel-Import
+                            elif uploaded_file.name.endswith(".xlsx"):
+                                df_csv = lade_excel_feststoffdaten(uploaded_file, zeitzone="Europe/Berlin")
+                                merge_typ = "tolerant"
+        
+                            else:
+                                st.warning("Nur CSV oder Excel-Dateien sind erlaubt.")
+                                st.stop()
+        
+                            # Vorbereiten der Basisdaten für den Merge
+                            df_basis = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                            df_basis = df_basis.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                            df_basis["timestamp_beginn_baggern"] = pd.to_datetime(df_basis["timestamp_beginn_baggern"], utc=True)
+        
+                            df_csv = df_csv[df_csv["timestamp_beginn_baggern"].notna()].copy()
+                            df_csv["timestamp_beginn_baggern"] = pd.to_datetime(df_csv["timestamp_beginn_baggern"], utc=True)
+        
+                            df_basis = df_basis.sort_values("timestamp_beginn_baggern")
+                            df_csv = df_csv.sort_values("timestamp_beginn_baggern")
+        
+                            # Merge je nach Typ (exakt oder tolerant)
+                            if merge_typ == "exact":
                                 df_merged = pd.merge(
                                     df_basis,
-                                    df_csv,
+                                    df_csv.drop(columns=["Umlauf"], errors="ignore"),
                                     on="timestamp_beginn_baggern",
-                                    how="left",
-                                    suffixes=("", "_csv")
+                                    how="left"
                                 )
-            
-                                # 🧪 Werte aus CSV übernehmen, nur wenn vorhanden
-                                if "feststoff_csv" in df_merged.columns:
-                                    df_merged["feststoff"] = df_merged["feststoff"].combine_first(df_merged["feststoff_csv"])
-                                if "proz_wert_csv" in df_merged.columns:
-                                    df_merged["proz_wert"] = df_merged["proz_wert"].combine_first(df_merged["proz_wert_csv"])
-            
-                                # 🧹 Nur benötigte Spalten behalten
-                                df_final = df_merged[["Umlauf", "timestamp_beginn_baggern", "feststoff", "proz_wert"]]
-            
-                                # 💾 Im Session State speichern
-                                st.session_state["df_manuell"] = df_final
-            
-                                st.success(f"{df_csv.shape[0]} Einträge geladen und mit Umläufen kombiniert.")
-            
-                    # -------------------------------------------------------------------------------------------------------------
-                    # 🔄 Automatischer Neuaufbau von df_manuell, falls neue Umläufe erkannt wurden
-                    # -------------------------------------------------------------------------------------------------------------
-                    neue_umlaeufe = set(umlauf_info_df_all["Umlauf"])
-                    vorhandene_umlaeufe = set(st.session_state.get("df_manuell", pd.DataFrame()).get("Umlauf", []))
-            
-                    if neue_umlaeufe != vorhandene_umlaeufe:
-                        df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
-                        df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
-                        df_manuell["feststoff"] = None
-                        df_manuell["proz_wert"] = None
-                        st.session_state["df_manuell"] = df_manuell
-            
-                    # -------------------------------------------------------------------------------------------------------------
-                    # ✏️ Eingabeformular für manuelle Werte + Berechnung + Export
-                    # -------------------------------------------------------------------------------------------------------------
-    
-                    with st.expander("✏️ Eingabe manueller Feststoffwerte"):        
-                        with st.form("eingabe_und_berechnung_form"):
-                            # 📄 Initialaufbau, falls noch kein df_manuell existiert
-                            if "df_manuell" not in st.session_state:
-                                if "Start Baggern" in umlauf_info_df_all.columns:
-                                    df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
-                                    df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
-                                    df_manuell["feststoff"] = None
-                                    df_manuell["proz_wert"] = None
-                                    st.session_state["df_manuell"] = df_manuell
-                                else:
-                                    st.warning("⚠️ 'Start Baggern' nicht vorhanden.")
-                                    st.stop()
+                            else:
+                                df_merged = pd.merge_asof(
+                                    df_basis,
+                                    df_csv.drop(columns=["Umlauf"], errors="ignore"),
+                                    on="timestamp_beginn_baggern",
+                                    direction="nearest",
+                                    tolerance=pd.Timedelta("5min")
+                                )
+        
+                            # Eventuelle *_csv-Spalten mit echten Spalten kombinieren
+                            if "feststoff_csv" in df_merged.columns:
+                                df_merged["feststoff"] = df_merged["feststoff"].combine_first(df_merged["feststoff_csv"])
+                            if "proz_wert_csv" in df_merged.columns:
+                                df_merged["proz_wert"] = df_merged["proz_wert"].combine_first(df_merged["proz_wert_csv"])
+        
+                            # Warnung bei unzugeordneten Werten
+                            anzahl_fehlend = df_merged[["feststoff", "proz_wert"]].isna().any(axis=1).sum()
+                            if anzahl_fehlend > 0:
+                                st.warning(f"⚠️ {anzahl_fehlend} Einträge konnten nicht zugeordnet werden.")
+        
+                            # Finalen DataFrame sichern
+                            df_final = df_merged[["Umlauf", "timestamp_beginn_baggern", "feststoff", "proz_wert"]]
+                            st.session_state["df_manuell"] = df_final
+                            st.session_state["editor_alle_umlaeufe_generieren"] = True
+                            st.success(f"📥 {df_csv.shape[0]} Einträge aus Datei geladen und gemerged.")
+        
+                # -------------------------------------------------------------------------------------------------------------
+                # 🔄 Neuaufbau von df_manuell, falls neue Umläufe vorhanden sind
+                # -------------------------------------------------------------------------------------------------------------
+                neue_umlaeufe = set(umlauf_info_df_all["Umlauf"])
+                vorhandene_umlaeufe = set(st.session_state.get("df_manuell", pd.DataFrame()).get("Umlauf", []))
+        
+                if neue_umlaeufe != vorhandene_umlaeufe:
+                    df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                    df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                    df_manuell["feststoff"] = None
+                    df_manuell["proz_wert"] = None
+                    st.session_state["df_manuell"] = df_manuell
+
+        
+                # -------------------------------------------------------------------------------------------------------------
+                # ✏️ Eingabeformular für manuelle Werte + Berechnung + Export
+                # -------------------------------------------------------------------------------------------------------------
+                with st.expander("✏️ Eingabe manueller Feststoffwerte und Berechnung der TDS-Tabelle"):
                 
-                            # 👁️ Editor anzeigen
-                            df_editor = st.session_state["df_manuell"].copy()
-                            df_editor_display = st.data_editor(
-                                df_editor,
-                                num_rows="dynamic",
-                                use_container_width=True,
-                                column_config={
-                                    "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern"),
-                                    "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
-                                    "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
-                                },
-                                hide_index=True
-                            )
+                    # Automatischer Wechsel in Stufe 2, falls "Alle" bereits ausgewählt ist
+                    if (
+                        "bereit_fuer_berechnung" not in st.session_state and
+                        st.session_state.get("umlauf_auswahl") == "Alle"
+                    ):
+                        st.session_state["bereit_fuer_berechnung"] = True
+                        st.rerun()
                 
-                            # ☑️ Button: alles auf einmal
+                    # Initialaufbau der manuell bearbeitbaren Tabelle, falls nicht vorhanden
+                    if "df_manuell" not in st.session_state:
+                        if "Start Baggern" in umlauf_info_df_all.columns:
+                            df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
+                            df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                            df_manuell["feststoff"] = None
+                            df_manuell["proz_wert"] = None
+                            st.session_state["df_manuell"] = df_manuell
+                        else:
+                            st.warning("⚠️ 'Start Baggern' nicht vorhanden.")
+                            st.stop()
+                
+                    # Formular zur Eingabe & Anzeige der manuellen Werte
+                    with st.form("eingabe_und_berechnung_form"):
+                
+                        df_editor = st.session_state["df_manuell"].copy()
+                        df_editor_display = st.data_editor(
+                            df_editor,
+                            num_rows="dynamic",
+                            use_container_width=True,
+                            column_config={
+                                "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern"),
+                                "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
+                                "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
+                            },
+                            hide_index=True
+                        )
+                
+                        # Session-Flag initialisieren (nur beim ersten Aufruf)
+                        if "bereit_fuer_berechnung" not in st.session_state:
+                            st.session_state["bereit_fuer_berechnung"] = False
+                
+                        submitted = False
+                
+                        # Zwei-Stufen-Logik für Berechnung auslösen
+                        if not st.session_state["bereit_fuer_berechnung"]:
+                            submitted = st.form_submit_button("⏳ Berechnung starten")
+                            if submitted:
+                                st.session_state["bereit_fuer_berechnung"] = True
+                                st.rerun()
+                        else:
                             submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
                 
-                        if submitted:
-                            # 💾 Manuelle Eingaben übernehmen
-                            st.session_state["df_manuell"] = df_editor_display.copy()
+                # 🔁 Nach der Formulareingabe
+                if submitted:
+                    st.session_state["bereit_fuer_berechnung"] = False
+                    st.session_state["df_manuell"] = df_editor_display.copy()
                 
-                            # 🧠 Strategie auslesen oder Defaults setzen
-                            strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
-                            if not strategie:
-                                strategie = {
-                                    "Verdraengung": {"Start": "standard", "Ende": "standard"},
-                                    "Ladungsvolumen": {"Start": "standard", "Ende": "standard"}
-                                }
+                    # Ladestrategie ermitteln
+                    strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
+                    if not strategie:
+                        strategie = {
+                            "Verdraengung": {"Start": "standard", "Ende": "standard"},
+                            "Ladungsvolumen": {"Start": "standard", "Ende": "standard"}
+                        }
                 
-                            # 🧮 Berechnung starten
-                            with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
-                                df_tabelle = erzeuge_tds_tabelle(
-                                    df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-                                )
-                                st.session_state["tds_df"] = df_tabelle
+                    with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
                 
-                                # 📤 CSV vorbereiten
-                                from datetime import datetime
-                                now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                                df_export = st.session_state["df_manuell"]
-                                csv_data = df_export.to_csv(index=False).encode("utf-8")
-                                filename = f"{now_str}_manuell_feststoff.csv"
-                
-                                # 🗂️ Für Export vorbereiten
-                                st.session_state["export_ready"] = True
-                                st.session_state["export_csv"] = csv_data
-                                st.session_state["export_filename"] = filename
-                
-                                st.success("✅ Eingaben gespeichert, TDS-Tabelle berechnet & CSV bereit zum Download.")
-            
-                    # -------------------------------------------------------------------------------------------------------------
-                    # 💾 Optionaler Download-Button anzeigen
-                    # -------------------------------------------------------------------------------------------------------------
-                    if st.session_state.get("export_ready"):
-                        st.download_button(
-                            label="⬇️ CSV wurde vorbereitet – hier klicken zum Speichern",
-                            data=st.session_state["export_csv"],
-                            file_name=st.session_state["export_filename"],
-                            mime="text/csv"
+                        # Hauptberechnung → gibt zwei Tabellen zurück: eine für Anzeige, eine für Export
+                        df_tabelle, df_tabelle_export = erzeuge_tds_tabelle(
+                            df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                         )
-                        st.session_state["export_ready"] = False
-            
-                    # -------------------------------------------------------------------------------------------------------------
-                    # 📊 TDS-Ergebnis-Tabelle anzeigen
-                    # -------------------------------------------------------------------------------------------------------------
-                    if "tds_df" in st.session_state:
-    
-                        st.dataframe(style_tds_tabelle(st.session_state["tds_df"]), use_container_width=True, hide_index=True)
-                    else:
-                        st.info("🔹 Noch keine TDS-Tabelle berechnet.")
-            else:
-                st.markdown("""
-                <div style="color:#31708f;background-color:#d9edf7;padding:10px;border-radius:5px;">
-                ⚠️ Aktuell ist ein Umlauf ausgewählt.<br>
-                Dieser Bereich ist nur verfügbar, wenn <strong>🔁 Umlauf wählen</strong> auf <strong>Alle</strong> gesetzt ist.
-                </div>
-                """, unsafe_allow_html=True)
-                 
+                        st.session_state["tds_df"] = df_tabelle
+                
+                        # 📁 Excel-Datei erzeugen mit zwei Blättern: "TDS-Werte" und "TDS-Anzeige"
+                        import io
+                        from datetime import datetime
+                
+                        now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                        excel_buffer = io.BytesIO()
+                
+                        # Flache Spaltennamen (z.B. "Feststoff - Masse")
+                        df_export_flat = df_tabelle_export.copy()
+                        spalten_flat = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_export_flat.columns]
+                        df_export_flat.columns = spalten_flat
+                
+                        # Einheitenzeile passend zur Tabelle
+                        einheiten = [
+                            "", "t", "t", "t", "m³", "m³", "m³", "t/m³", "%",
+                            "m³", "t", "m³", "m³", "m³", "%", "m³", "m³", "m³"
+                        ]
+                
+                        with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+                            # 🧾 Blatt 1: Nur Werte + Einheiten
+                            sheetname = "TDS-Werte"
+                            df_export_flat.to_excel(writer, sheet_name=sheetname, startrow=2, index=False, header=False)
+                            worksheet = writer.sheets[sheetname]
+                
+                            # Erste Zeile: Spaltennamen
+                            for col_num, header in enumerate(spalten_flat):
+                                worksheet.write(0, col_num, header)
+                
+                            # Zweite Zeile: Einheiten
+                            for col_num, einheit in enumerate(einheiten):
+                                worksheet.write(1, col_num, einheit)
+                
+                            # 🧾 Blatt 2: Anzeigeformat (mit formatierten Einheiten)
+                            df_anzeige = st.session_state["tds_df"].copy()
+                            df_anzeige.columns = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_anzeige.columns]
+                            df_anzeige.to_excel(writer, sheet_name="TDS-Anzeige", index=False)
+                
+                        # 📥 Excel-Datei in Session-State speichern
+                        st.session_state["export_excel"] = excel_buffer.getvalue()
+                        st.session_state["export_excel_filename"] = f"{now_str}_TDS_Tabelle.xlsx"
+                
+                        # Zusätzlich: CSV-Export der manuellen Eingaben
+                        df_export = st.session_state["df_manuell"]
+                        csv_data = df_export.to_csv(index=False).encode("utf-8")
+                        st.session_state["export_ready"] = True
+                        st.session_state["export_csv"] = csv_data
+                        st.session_state["export_filename"] = f"{now_str}_manuell_feststoff.csv"
+                
+                # -------------------------------------------------------------------------------------------------------------
+                # 💾 Downloadbuttons für CSV + Excel
+                # -------------------------------------------------------------------------------------------------------------
+                
+                if st.session_state.get("export_ready"):
+                    st.download_button(
+                        label="⬇️ CSV wurde vorbereitet – hier klicken zum Speichern",
+                        data=st.session_state["export_csv"],
+                        file_name=st.session_state["export_filename"],
+                        mime="text/csv"
+                    )
+                    st.session_state["export_ready"] = False
+                
+                # 📊 Anzeige der TDS-Tabelle (formatiert)
+                if "tds_df" in st.session_state:
+                    st.dataframe((st.session_state["tds_df"]), use_container_width=True, hide_index=True)
+                
+                # 📥 Excel-Download
+                if st.session_state.get("export_excel"):
+                    st.download_button(
+                        label="📥 TDS-Tabelle als Excel speichern",
+                        data=st.session_state["export_excel"],
+                        file_name=st.session_state["export_excel_filename"],
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.info("🔹 Noch keine TDS-Tabelle berechnet.")
+
 
 # ======================================================================================================================
 # TAB 6 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung

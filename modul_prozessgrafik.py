@@ -83,10 +83,10 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
     
     # 🔲 Sanfte farbliche Hinterlegung der Statusphasen – nur innerhalb des Umlaufs
     for status, farbe, name in [
-        ([1], "rgba(200,200,200,0.10)", "Leerfahrt"),
-        ([2], "rgba(0,180,255,0.10)", "Baggern"),
-        ([3], "rgba(200,200,200,0.10)", "Vollfahrt"),
-        ([4, 5, 6], "rgba(0,255,80,0.11)", "Verbringen")
+        ([1], "#f9fafb", "Leerfahrt"),
+        ([2], "#f0f6fe", "Baggern"),
+        ([3], "#f9fafb", "Vollfahrt"),
+        ([4, 5, 6], "#ecf9f2", "Verbringen")
     ]:
         for s, e in zip(*status_bereiche(df_plot, status)):
             t0 = df_plot.loc[s, "timestamp"]

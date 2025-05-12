@@ -10,7 +10,7 @@ from modul_polygon_auswertung import berechne_punkte_und_zeit
 # 💠 Allgemeines KPI-Panel – z. B. Umlaufdauer, Verdrängung, Volumen
 panel_template = """
 <div style="
-    background:#f4f8fc;
+    background:#f7fafe;
     border-radius: 16px;
     padding: 14px 16px 10px 16px;
     margin-bottom: 1.2rem;
@@ -34,7 +34,7 @@ panel_template = """
 # 💠 Strecken-Panel
 strecken_panel_template = """
 <div style="
-    background:#f4f8fc;
+    background:#f7fafe;
     border-radius: 16px;
     padding: 14px 16px 10px 16px;
     margin-bottom: 1.2rem;
@@ -57,7 +57,7 @@ strecken_panel_template = """
 # 💠 Dichte-Panel
 dichte_panel_template = """
 <div style="
-    background:#f4f8fc;
+    background:#f7fafe;
     border-radius: 16px;
     padding: 14px 16px;
     margin-bottom: 1.2rem;
@@ -79,7 +79,7 @@ dichte_panel_template = """
 # 💠 Feld-Panel
 feld_panel_template = """
 <div style="
-    background:#f4f8fc;
+    background:#f7fafe;
     border-radius: 16px;
     padding: 14px 16px 10px 16px;
     margin-bottom: 1.2rem;
@@ -385,19 +385,19 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                 soll = solltiefen_dict.get(name)
                 soll_text = f"<strong>Solltiefe:</strong> {soll:.2f} m | " if soll else ""
                 st.markdown(f"""<div style='
-                    background: #f4f8fc;
+                    background: #f7fafe;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #222;'>
+                    color: #30579f;'>
                     <strong>{name}</strong> – {soll_text}{minutes} min
                 </div>""", unsafe_allow_html=True)
 
             ausserhalb_min = bagger_zeiten.get("außerhalb", 0.0)
             if ausserhalb_min > 0:
                 st.markdown(f"""<div style='
-                    background: #fff3f3;
+                    background: #fff4f4;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
@@ -418,19 +418,19 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     continue
                 minutes = verbring_zeiten.get(name, 0.0)
                 st.markdown(f"""<div style='
-                    background: #f4f8fc;
+                    background: #f7fafe;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #222;'>
+                    color: #30579f;'>
                     <strong>{name}</strong> – {minutes} min
                 </div>""", unsafe_allow_html=True)
 
             ausserhalb_min = verbring_zeiten.get("außerhalb", 0.0)
             if ausserhalb_min > 0:
                 st.markdown(f"""<div style='
-                    background: #fff3f3;
+                    background: #fff4f4;
                     border-radius: 8px;
                     padding: 6px 10px;
                     margin-bottom: 6px;
