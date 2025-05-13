@@ -88,12 +88,12 @@ from modul_umlauftabelle import (
     show_gesamtzeiten_dynamisch,
     erstelle_umlauftabelle,
     berechne_gesamtzeiten,
-    erzeuge_tds_tabelle, erzeuge_tds_tabelle, style_tds_tabelle
-)
+    erzeuge_tds_tabelle, erzeuge_tds_tabelle, erzeuge_verbring_tabelle)
 
 # 🗺️ Darstellung der Tracks + Polygone auf interaktiven Karten
 from modul_karten import plot_karte, zeige_umlauf_info_karte
 
+# Import der Tagesberichte für Feststoff
 from modul_daten_import import lade_excel_feststoffdaten
 
 #==============================================================================================================================
@@ -369,6 +369,8 @@ if uploaded_files:
         df = nummeriere_umlaeufe(df, startwert=startwert)
         umlauf_info_df = extrahiere_umlauf_startzeiten(df, startwert=startwert)
         umlauf_info_df_all = umlauf_info_df.copy()
+
+
         
         if not umlauf_info_df.empty:
             if "Start Leerfahrt" in umlauf_info_df.columns:
@@ -547,7 +549,7 @@ if uploaded_files:
         # 👉 Auswahlzeile vorbereiten, falls ein einzelner Umlauf gewählt ist
         zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
 
-        
+        df_ungefiltert = df.copy()
 
         
         
@@ -805,6 +807,7 @@ if uploaded_files:
                 
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
+          
 # ======================================================================================================================
 # # Tab 5 - Umlauftabelle - TDS 
 # ======================================================================================================================
@@ -915,13 +918,6 @@ if uploaded_files:
                 # -------------------------------------------------------------------------------------------------------------
                 with st.expander("✏️ Eingabe manueller Feststoffwerte und Berechnung der TDS-Tabelle"):
                 
-                    # Automatischer Wechsel in Stufe 2, falls "Alle" bereits ausgewählt ist
-                    if (
-                        "bereit_fuer_berechnung" not in st.session_state and
-                        st.session_state.get("umlauf_auswahl") == "Alle"
-                    ):
-                        st.session_state["bereit_fuer_berechnung"] = True
-                        st.rerun()
                 
                     # Initialaufbau der manuell bearbeitbaren Tabelle, falls nicht vorhanden
                     if "df_manuell" not in st.session_state:
@@ -935,9 +931,10 @@ if uploaded_files:
                             st.warning("⚠️ 'Start Baggern' nicht vorhanden.")
                             st.stop()
                 
+
                     # Formular zur Eingabe & Anzeige der manuellen Werte
                     with st.form("eingabe_und_berechnung_form"):
-                
+                    
                         df_editor = st.session_state["df_manuell"].copy()
                         df_editor_display = st.data_editor(
                             df_editor,
@@ -950,28 +947,38 @@ if uploaded_files:
                             },
                             hide_index=True
                         )
-                
+                    
                         # Session-Flag initialisieren (nur beim ersten Aufruf)
                         if "bereit_fuer_berechnung" not in st.session_state:
                             st.session_state["bereit_fuer_berechnung"] = False
-                
+                    
                         submitted = False
-                
-                        # Zwei-Stufen-Logik für Berechnung auslösen
-                        if not st.session_state["bereit_fuer_berechnung"]:
-                            submitted = st.form_submit_button("⏳ Berechnung starten")
-                            if submitted:
-                                st.session_state["bereit_fuer_berechnung"] = True
-                                st.rerun()
-                        else:
+                    
+                        # 👉 Auswahl aus Selectbox lesen
+                        selected_umlauf = st.session_state.get("umlauf_auswahl", "Alle")
+                    
+                        # 🔄 Button-Logik je nach Auswahl
+                        if selected_umlauf == "Alle":
                             submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
+                        else:
+                            if not st.session_state.get("bereit_fuer_berechnung", False):
+                                submitted = st.form_submit_button("⏳ Berechnung starten")
+                                if submitted:
+                                    st.session_state["bereit_fuer_berechnung"] = True
+                                    st.rerun()
+                            else:
+                                submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
+
                 
                 # 🔁 Nach der Formulareingabe
                 if submitted:
+                    # 🔄 Reset des Session-Flags für Doppel-Logik
                     st.session_state["bereit_fuer_berechnung"] = False
+                
+                    # 🔁 Übernahme der Eingabedaten aus dem Editor
                     st.session_state["df_manuell"] = df_editor_display.copy()
                 
-                    # Ladestrategie ermitteln
+                    # 🔍 Lade Strategie aus Schiffsparametern oder nutze Standardwerte
                     strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
                     if not strategie:
                         strategie = {
@@ -980,65 +987,63 @@ if uploaded_files:
                         }
                 
                     with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
-                
-                        # Hauptberechnung → gibt zwei Tabellen zurück: eine für Anzeige, eine für Export
+                        # 🔢 TDS-Berechnung für alle Umläufe → Anzeige & Export
                         df_tabelle, df_tabelle_export = erzeuge_tds_tabelle(
                             df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                         )
                         st.session_state["tds_df"] = df_tabelle
+                        st.session_state["tds_df_export"] = df_tabelle_export  # ❗ wichtig für andere Tabellen
                 
-                        # 📁 Excel-Datei erzeugen mit zwei Blättern: "TDS-Werte" und "TDS-Anzeige"
+                        # 📁 Vorbereitung der Excel-Datei
                         import io
                         from datetime import datetime
                 
                         now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                         excel_buffer = io.BytesIO()
                 
-                        # Flache Spaltennamen (z.B. "Feststoff - Masse")
+                        # 🔧 Flache Spaltennamen für Export
                         df_export_flat = df_tabelle_export.copy()
                         spalten_flat = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_export_flat.columns]
                         df_export_flat.columns = spalten_flat
                 
-                        # Einheitenzeile passend zur Tabelle
+                        # 📏 Einheiten-Zeile passend zu den Spalten
                         einheiten = [
                             "", "t", "t", "t", "m³", "m³", "m³", "t/m³", "%",
                             "m³", "t", "m³", "m³", "m³", "%", "m³", "m³", "m³"
                         ]
                 
                         with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-                            # 🧾 Blatt 1: Nur Werte + Einheiten
+                            # 📄 Blatt 1: TDS-Werte (Rohdaten)
                             sheetname = "TDS-Werte"
                             df_export_flat.to_excel(writer, sheet_name=sheetname, startrow=2, index=False, header=False)
                             worksheet = writer.sheets[sheetname]
                 
-                            # Erste Zeile: Spaltennamen
+                            # ➕ Kopfzeile & Einheiten manuell ergänzen
                             for col_num, header in enumerate(spalten_flat):
                                 worksheet.write(0, col_num, header)
-                
-                            # Zweite Zeile: Einheiten
                             for col_num, einheit in enumerate(einheiten):
                                 worksheet.write(1, col_num, einheit)
                 
-                            # 🧾 Blatt 2: Anzeigeformat (mit formatierten Einheiten)
+                            # 📄 Blatt 2: Anzeige-Tabelle (formatiert)
                             df_anzeige = st.session_state["tds_df"].copy()
                             df_anzeige.columns = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_anzeige.columns]
                             df_anzeige.to_excel(writer, sheet_name="TDS-Anzeige", index=False)
                 
-                        # 📥 Excel-Datei in Session-State speichern
+                        # 🧠 Excel-Datei und CSV-Export in Session-State speichern
                         st.session_state["export_excel"] = excel_buffer.getvalue()
                         st.session_state["export_excel_filename"] = f"{now_str}_TDS_Tabelle.xlsx"
                 
-                        # Zusätzlich: CSV-Export der manuellen Eingaben
                         df_export = st.session_state["df_manuell"]
                         csv_data = df_export.to_csv(index=False).encode("utf-8")
                         st.session_state["export_ready"] = True
                         st.session_state["export_csv"] = csv_data
                         st.session_state["export_filename"] = f"{now_str}_manuell_feststoff.csv"
+
                 
                 # -------------------------------------------------------------------------------------------------------------
                 # 💾 Downloadbuttons für CSV + Excel
                 # -------------------------------------------------------------------------------------------------------------
-                
+                # ⬇️ CSV-Export: manuelle Feststoffdaten
                 if st.session_state.get("export_ready"):
                     st.download_button(
                         label="⬇️ CSV wurde vorbereitet – hier klicken zum Speichern",
@@ -1048,14 +1053,14 @@ if uploaded_files:
                     )
                     st.session_state["export_ready"] = False
                 
-                # 📊 Anzeige der TDS-Tabelle (formatiert)
+                # 📋 Anzeige der TDS-Tabelle
                 if "tds_df" in st.session_state:
                     st.dataframe((st.session_state["tds_df"]), use_container_width=True, hide_index=True)
                 
-                # 📥 Excel-Download
+                # ⬇️ Excel-Export der TDS-Tabelle
                 if st.session_state.get("export_excel"):
                     st.download_button(
-                        label="📥 TDS-Tabelle als Excel speichern",
+                        label="📥 TDS-Tabelle als .xlsx speichern",
                         data=st.session_state["export_excel"],
                         file_name=st.session_state["export_excel_filename"],
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1064,6 +1069,43 @@ if uploaded_files:
                     st.info("🔹 Noch keine TDS-Tabelle berechnet.")
 
 
+
+            # ---------------------------------------------------------------------------------------------------------------------
+            # Verbringstellen-Tabelle erzeugen und exportieren
+            # ---------------------------------------------------------------------------------------------------------------------
+            st.markdown("---")   
+            st.markdown("#### Verbringstellen-Tabelle")
+            import io
+            from datetime import datetime        
+            
+            if not df.empty:
+                # 🔁 Alle Umläufe, unabhängig von Auswahl
+                df_verbring_tab = erzeuge_verbring_tabelle(df_ungefiltert, umlauf_info_df_all, transformer)
+            
+                if df_verbring_tab.empty:
+                    st.warning("⚠️ Es wurden keine Verbringstellen erkannt. Stelle sicher, dass mindestens ein Polygonfeld vorhanden ist und Status 4/5/6 enthalten ist.")
+                else:
+                    # Anzeige der Tabelle
+                    st.dataframe(df_verbring_tab, use_container_width=True, hide_index=True)
+            
+                    # ⬇️ Excel-Export mit MultiIndex
+                    df_verbring_export = df_verbring_tab.copy()
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    dateiname = f"Verbringstellen_WSA_{schiff}_{timestamp}.xlsx"
+            
+                    excel_buffer = io.BytesIO()
+                    df_verbring_export.to_excel(excel_buffer, index=True)  # behält MultiIndex
+                    excel_buffer.seek(0)
+            
+                    st.download_button(
+                        label="📥 WSA Verbringtabelle als .xlsx speichern",
+                        data=excel_buffer,
+                        file_name=dateiname,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            else:
+                st.info("Bitte zuerst Daten laden.")
+ 
 # ======================================================================================================================
 # TAB 6 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
 # ======================================================================================================================
@@ -1188,8 +1230,6 @@ if uploaded_files:
                         st.dataframe(df_verbring)                    
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
-
-          
 
 
 

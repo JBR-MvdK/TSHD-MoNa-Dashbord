@@ -25,7 +25,12 @@ def parse_mona(files):
 
     # Durch alle hochgeladenen Dateien iterieren
     for file in files:
-        content = file.getvalue().decode("utf-8")  # Datei dekodieren
+        
+        try:
+            content = file.getvalue().decode("utf-8")
+        except UnicodeDecodeError:
+            content = file.getvalue().decode("latin-1")  # Fallback, z. B. für Windows-Dateien
+        
         lines = content.splitlines()               # In Zeilen aufteilen
         cleaned = [line.strip().strip("\x02").strip("\x03").split("\t") 
                    for line in lines if line.strip()]  # Bereinigen + Spalten trennen

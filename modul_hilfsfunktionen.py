@@ -105,17 +105,22 @@ def pruefe_werte_gegen_schiffsparameter(df, schiff_name, parameter_dict):
 
     for spalte, grenz in limits.items():
         if spalte in df.columns:
-            mask = pd.Series([True] * len(df))
+            mask = pd.Series([True] * len(df), index=df.index)
             if grenz.get("min") is not None:
                 mask &= df[spalte] >= grenz["min"]
             if grenz.get("max") is not None:
                 mask &= df[spalte] <= grenz["max"]
+            
+            # 🛡 Maske sicherstellen
+            mask = mask.reindex(df.index, fill_value=False)
+
             entfernt = (~mask).sum()
             if entfernt > 0:
                 fehlerhafte_werte.append((spalte, entfernt))
                 df = df[mask]
 
     return df, fehlerhafte_werte
+
 
 
 # --------------------------------------------------------------------------------------------------

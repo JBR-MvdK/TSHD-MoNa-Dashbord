@@ -5,16 +5,16 @@
 import pandas as pd
 import streamlit as st
 
-# 🔧 Hilfsfunktionen zum Formatieren von Zeiten und Zahlen
+# 🔧 Formatierungsfunktionen für Zeit- und Zahlenwerte
 from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_de
 
-# 🔍 Berechnungen der Kennzahlen
+# 🔍 Berechnungsfunktionen für Kennzahlen und TDS-Werte
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 from modul_berechnungen import berechne_tds_aus_werte, berechne_umlauf_auswertung
 
 
 # -----------------------------------------------------------------------------------------------------
-# 📊 Gesamtzeit-Tabelle dynamisch erzeugen (z.B. hh:mm:ss oder Dezimalstunden)
+# 📊 Gesamtzeiten dynamisch anzeigen – abhängig vom gewählten Zeitformat
 # -----------------------------------------------------------------------------------------------------
 def show_gesamtzeiten_dynamisch(summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf, 
                                  zeitformat="hh:mm:ss", title="Gesamtzeiten"):
@@ -25,9 +25,9 @@ def show_gesamtzeiten_dynamisch(summe_leerfahrt, summe_baggern, summe_vollfahrt,
     }
     formatter = format_mapper.get(zeitformat, to_hhmmss)
 
-    # Erste Zeile: gewähltes Format
+    # 1. Zeile: gewähltes Format
     summen_format1 = [formatter(d) for d in [summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf]]
-    # Zweite Zeile: immer Dezimalstunden
+    # 2. Zeile: zusätzlich immer in Dezimalstunden
     summen_stunden = [to_dezimalstunden(d) for d in [summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf]]
 
     columns = ["Leerfahrt", "Baggern", "Vollfahrt", "Verklappen", "Umlauf"]
@@ -37,12 +37,12 @@ def show_gesamtzeiten_dynamisch(summe_leerfahrt, summe_baggern, summe_vollfahrt,
 
 
 # -----------------------------------------------------------------------------------------------------
-# 📅 Umlauftabelle mit Zeitpunkten und Dauern
+# 📅 Erzeugt eine Umlauftabelle mit Zeitpunkten und Zeitdauern je Phase
 # -----------------------------------------------------------------------------------------------------
 def erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat):
     from modul_hilfsfunktionen import convert_timestamp, format_dauer
 
-    # 🧱 Spaltenstruktur mit MultiIndex
+    # Strukturierte Spalten mit MultiIndex
     columns = pd.MultiIndex.from_tuples([
         ("Umlauf", "Nr."),
         ("Datum", ""),
@@ -53,39 +53,38 @@ def erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat):
         ("Umlauf", "Ende"), ("Umlauf", "Dauer")
     ])
 
-    # 📊 Ergebnislisten vorbereiten
     rows = []
     dauer_leerfahrt_list, dauer_baggern_list = [], []
     dauer_vollfahrt_list, dauer_verklapp_list, dauer_umlauf_list = [], [], []
 
     for _, row in umlauf_info_df.iterrows():
-        # ✅ Sicheres Parsen & Umwandlung mit Zeitzone
+        # Zeitwerte sicher konvertieren (inkl. Zeitzone)
         def safe_ts(key):
             t = row.get(key)
             return convert_timestamp(pd.Timestamp(t) if pd.notnull(t) else None, zeitzone) if t else None
 
-        # ⏱️ Einzelne Zeitpunkte
+        # Zeitpunkte extrahieren
         anzeige_start_leerfahrt = safe_ts("Start Leerfahrt")
         anzeige_start_baggern = safe_ts("Start Baggern")
         anzeige_start_vollfahrt = safe_ts("Start Vollfahrt")
         anzeige_start_verklapp = safe_ts("Start Verklappen/Pump/Rainbow")
         anzeige_ende_umlauf = safe_ts("Ende")
 
-        # ⏳ Phasen-Dauern berechnen
+        # Zeitdifferenzen berechnen (je Phase)
         dauer_leerfahrt = (anzeige_start_baggern - anzeige_start_leerfahrt) if anzeige_start_baggern and anzeige_start_leerfahrt else None
         dauer_baggern = (anzeige_start_vollfahrt - anzeige_start_baggern) if anzeige_start_vollfahrt and anzeige_start_baggern else None
         dauer_vollfahrt = (anzeige_start_verklapp - anzeige_start_vollfahrt) if anzeige_start_verklapp and anzeige_start_vollfahrt else None
         dauer_verklapp = (anzeige_ende_umlauf - anzeige_start_verklapp) if anzeige_ende_umlauf and anzeige_start_verklapp else None
         dauer_umlauf = (anzeige_ende_umlauf - anzeige_start_leerfahrt) if anzeige_ende_umlauf and anzeige_start_leerfahrt else None
 
-        # 📌 Sammeln
+        # Dauer-Listen befüllen
         if dauer_leerfahrt: dauer_leerfahrt_list.append(dauer_leerfahrt)
         if dauer_baggern: dauer_baggern_list.append(dauer_baggern)
         if dauer_vollfahrt: dauer_vollfahrt_list.append(dauer_vollfahrt)
         if dauer_verklapp: dauer_verklapp_list.append(dauer_verklapp)
         if dauer_umlauf: dauer_umlauf_list.append(dauer_umlauf)
 
-        # 🧾 Einzelne Zeile zusammenbauen
+        # Zeile für Tabelle aufbauen
         rows.append([
             row.get("Umlauf", "-"),
             anzeige_start_leerfahrt.strftime("%d.%m.%Y") if anzeige_start_leerfahrt else "-",
@@ -107,7 +106,7 @@ def erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat):
 
 
 # -----------------------------------------------------------------------------------------------------
-# ⏳ Gesamtzeitberechnung über alle Umläufe
+# ⏳ Gesamtzeiten über alle Umläufe zusammenfassen
 # -----------------------------------------------------------------------------------------------------
 def berechne_gesamtzeiten(dauer_leerfahrt_list, dauer_baggern_list, dauer_vollfahrt_list, dauer_verklapp_list, dauer_umlauf_list):
     return {
@@ -117,19 +116,17 @@ def berechne_gesamtzeiten(dauer_leerfahrt_list, dauer_baggern_list, dauer_vollfa
         "verklapp":  sum(dauer_verklapp_list, pd.Timedelta(0)),
         "umlauf":    sum(dauer_umlauf_list, pd.Timedelta(0))
     }
-
-
 # -----------------------------------------------------------------------------------------------------
 # 📈 TDS-Tabelle erzeugen (inkl. manuelle Eingaben und Berechnungen)
 # -----------------------------------------------------------------------------------------------------
 def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
     daten = []          # Formatierte Werte mit Einheiten (für Anzeige)
-    daten_export = []   # Reine Zahlenwerte (für Excel-Export)
+    daten_export = []   # Rohdaten (für Excel-Export ohne Formatierung)
+    kumuliert_feststoff = 0  # Zwischenspeicher für aufsummiertes Feststoffvolumen
 
     df_manuell = st.session_state.get("df_manuell", pd.DataFrame())
-    kumuliert_feststoff = 0  # Für die summierte Darstellung
 
-    # ⏰ Zeitstempel vorbereiten/vereinheitlichen
+    # ⏰ Timestamp-Spalte normieren (falls z.B. aus CSV/Excel eingelesen)
     if not df_manuell.empty:
         if not pd.api.types.is_datetime64_any_dtype(df_manuell["timestamp_beginn_baggern"]):
             df_manuell["timestamp_beginn_baggern"] = pd.to_datetime(df_manuell["timestamp_beginn_baggern"], errors="coerce")
@@ -138,12 +135,12 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         else:
             df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
 
-    # 🔁 Alle Umläufe iterieren
+    # 🔁 Umläufe durchlaufen
     for _, row in umlauf_info_df.iterrows():
         feststoff_manuell, proz = None, None
         row_time = pd.to_datetime(row.get("Start Baggern"), utc=True)
 
-        # 🔎 Passende manuelle Eingaben finden
+        # 🔍 Passende manuelle Eingabe suchen
         if not df_manuell.empty:
             treffer = df_manuell[df_manuell["timestamp_beginn_baggern"] == row_time]
             if not treffer.empty:
@@ -151,17 +148,17 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 proz = treffer.iloc[0].get("proz_wert")
 
         try:
-            # ⏱ Kontext-Zeitraum um den Umlauf festlegen
+            # Kontext: Zeitraum rund um den Umlauf
             t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
             t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
             df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
 
-            # 🧮 TDS-Kennzahlen berechnen
+            # Berechnung der TDS-Werte
             tds, werte, _, *_ = berechne_umlauf_auswertung(
                 df_context, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
             )
 
-            # 🌊 Rohdaten entnehmen
+            # 🌊 Basiswerte extrahieren
             leer_masse = werte.get("Verdraengung Start")
             voll_masse = werte.get("Verdraengung Ende")
             diff_masse = voll_masse - leer_masse if None not in [leer_masse, voll_masse] else None
@@ -170,7 +167,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             voll_vol = werte.get("Ladungsvolumen Ende")
             diff_vol = voll_vol - leer_vol if None not in [leer_vol, voll_vol] else None
 
-            # ➕ Manuelle Berechnung: Volumen + Zentrifuge
+            # ➕ Manuelle Ergänzung durch Eingabewerte
             if feststoff_manuell is not None and proz is not None and voll_vol is not None:
                 gemisch = voll_vol - feststoff_manuell
                 feststoff_gemisch = gemisch * (proz / 100)
@@ -178,11 +175,10 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             else:
                 gemisch = feststoff_gemisch = feststoff_volumen = None
 
-            # ➕ Kumuliert
             if feststoff_volumen is not None:
                 kumuliert_feststoff += feststoff_volumen
 
-            # 📋 Formatierte Zeile für Anzeige
+            # 📋 Darstellungstabelle (mit Einheiten + Formatierung)
             zeile = [
                 row["Umlauf"],
                 format_de(leer_masse, 0) + " t",
@@ -195,7 +191,6 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(tds.get("feststoffkonzentration") * 100, 1) + " %" if tds.get("feststoffkonzentration") is not None else "-",
                 format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
-                format_de(voll_vol, 0) + " m³" if voll_vol else "-",
                 format_de(feststoff_manuell, 0) + " m³" if feststoff_manuell else "-",
                 format_de(gemisch, 0) + " m³" if gemisch else "-",
                 format_de(proz, 1) + " %" if proz else "-",
@@ -204,11 +199,12 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(kumuliert_feststoff, 0) + " m³" if kumuliert_feststoff else "-"
             ]
         except Exception:
+            # Fehlerhafte Zeile abfangen
             zeile = [row["Umlauf"]] + ["-"] * 17
 
         daten.append(zeile)
 
-        # 📦 Rohwerte für Excel-Export (ohne Formatierung)
+        # Exportzeile mit reinen Werten (für Excel)
         zeile_export = [
             row["Umlauf"],
             leer_masse,
@@ -221,7 +217,6 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
             tds.get("feststoffvolumen"),
             tds.get("feststoffmasse"),
-            voll_vol,
             feststoff_manuell,
             gemisch,
             proz,
@@ -231,7 +226,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ]
         daten_export.append(zeile_export)
 
-    # 🏷 Spaltenstruktur (MultiIndex für Anzeige)
+    # Strukturierter MultiIndex für Anzeige und Export
     spalten = pd.MultiIndex.from_tuples([
         ("Umlauf", "Nr."),
         ("Ladungsmasse", "leer"),
@@ -241,10 +236,9 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Ladungsvolumen", "voll"),
         ("Ladungsvolumen", "Differenz"),
         ("Ladungs-", "dichte"),
-        ("Feststoff-", "Konzentr."),
-        ("Feststoff-", "Volumen"),
-        ("Feststoff-", "Masse"),
-        ("Ladung", "voll"),
+        ("Feststoff", "Konzentr."),
+        ("Feststoff", "Volumen"),
+        ("Feststoff", "Masse"),
         ("Ladung", "Feststoff"),
         ("Gemisch", ""),
         ("Zentrifuge", ""),
@@ -253,34 +247,110 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Feststoff", "Kumuliert")
     ])
 
-    # 🔁 Rückgabe: Anzeige-Tabelle + Export-Tabelle
+    # 🧾 Rückgabe: Anzeige- und Exporttabelle
     return (
-        pd.DataFrame(daten, columns=spalten),             # Anzeige (formatiert mit Einheiten)
-        pd.DataFrame(daten_export, columns=spalten)       # Export (Rohdaten, numerisch)
+        pd.DataFrame(daten, columns=spalten),
+        pd.DataFrame(daten_export, columns=spalten)
     )
-
-
-
-
-
 # -----------------------------------------------------------------------------------------------------
-# 🎨 Tabellen-Styling für die Ausgabe
+# 📈 Tabelle - Verbringstelle mit TDS-Feststoffgesamtwert
 # -----------------------------------------------------------------------------------------------------
-def style_tds_tabelle(df):
-    # 🔧 Farben sehr blass für bessere Lesbarkeit
-    def farbe_masse(val): return "background-color: rgba(255,255,255,1)"
-    def farbe_volumen(val): return "background-color: rgba(255,255,255,1)"
-    def farbe_dichte(val): return "background-color: rgba(255,255,255,1)"
-    def farbe_feststoff(val): return "background-color: rgba(255,255,255,1)"
+def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
+    import streamlit as st
 
-    styler = df.style
-    styler = styler.set_properties(**{"text-align": "right"})
-    styler = styler.set_table_styles([{"selector": "th", "props": [("text-align", "center")]}])
+    rows = []
 
-    # 🖌️ Spalten einfärben
-    styler = styler.applymap(farbe_masse, subset=pd.IndexSlice[:, ("Ladungsmasse", slice(None))])
-    styler = styler.applymap(farbe_volumen, subset=pd.IndexSlice[:, ("Ladungsvolumen", slice(None))])
-    styler = styler.applymap(farbe_dichte, subset=pd.IndexSlice[:, ("Ladungsdichte", slice(None))])
-    styler = styler.applymap(farbe_feststoff, subset=pd.IndexSlice[:, ("Feststoffmasse", slice(None))])
+    spalten = pd.MultiIndex.from_tuples([
+        ("Umlauf", "Nr."),
+        ("Verbringstelle", ""),
+        ("Schiff", ""),
+        ("Verbringbeginn", "Datum"),
+        ("Verbringbeginn", "Uhrzeit"),
+        ("Verbringbeginn", "Pos. Nord"),
+        ("Verbringbeginn", "Pos. Ost"),
+        ("Verbringende", "Datum"),
+        ("Verbringende", "Uhrzeit"),
+        ("Verbringende", "Pos. Nord"),
+        ("Verbringende", "Pos. Ost"),
+        ("Laderaumvolumen", "m³"),
+        ("Bodenklasse", "")
+    ])
 
-    return styler
+    # TDS-Tabelle aus Session laden, falls vorhanden
+    df_tds_export = st.session_state.get("tds_df_export", pd.DataFrame())
+    tds_available = not df_tds_export.empty and ("Umlauf", "Nr.") in df_tds_export.columns
+
+    # 🔁 Jeder Umlauf einzeln
+    for _, row in umlauf_info_df.iterrows():
+        try:
+            umlauf_nr = int(row["Umlauf"]) if pd.notna(row["Umlauf"]) else "-"
+            t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
+            t_ende = pd.to_datetime(row["Ende"], utc=True)
+            df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
+
+            # Schiffsnamen extrahieren
+            schiffsnamen = df_umlauf["Schiffsname"].dropna().unique() if "Schiffsname" in df_umlauf.columns else []
+            schiff = schiffsnamen[0] if len(schiffsnamen) > 0 else "-"
+
+            # Nur Verbringen (Status 4–6) mit Polygon
+            df_verb = df_umlauf[df_umlauf["Status"].isin([4, 5, 6]) & df_umlauf["Polygon_Name"].notna()]
+            if df_verb.empty:
+                continue
+
+            df_verb = df_verb.sort_values("timestamp")
+            polygon = df_verb["Polygon_Name"].iloc[0]
+            ts_start = df_verb.iloc[0]["timestamp"]
+            ts_end = df_verb.iloc[-1]["timestamp"]
+
+            def ts_parts(ts):
+                return ts.strftime("%d.%m.%Y"), ts.strftime("%H:%M:%S")
+
+            # Koordinaten konvertieren
+            try:
+                lon_start, lat_start = transformer.transform(df_verb.iloc[0]["RW_Schiff"], df_verb.iloc[0]["HW_Schiff"])
+                lon_end, lat_end = transformer.transform(df_verb.iloc[-1]["RW_Schiff"], df_verb.iloc[-1]["HW_Schiff"])
+            except:
+                lat_start = lon_start = lat_end = lon_end = "-"
+
+            # Volumen-Fallback, falls kein TDS vorhanden
+            voll_vol = df_verb["Feststoffvolumen"].dropna().max()
+
+            # Bodenklasse via Dichte aus TDS (falls vorhanden)
+            dichte = None
+            if tds_available:
+                tds_zeile = df_tds_export[df_tds_export[("Umlauf", "Nr.")] == umlauf_nr]
+                if not tds_zeile.empty:
+                    dichte = tds_zeile.iloc[0][("Ladungs-", "dichte")]
+            klasse = "Schlick" if pd.notna(dichte) and dichte < 1.6 else "Sand" if pd.notna(dichte) else "-"
+
+            # TDS-Gesamtwert
+            laderaumvolumen = "-"
+            if tds_available:
+                tds_zeile = df_tds_export[df_tds_export[("Umlauf", "Nr.")] == umlauf_nr]
+                if not tds_zeile.empty:
+                    wert = tds_zeile.iloc[0][("Feststoff", "Gesamt")]
+                    if pd.notna(wert):
+                        laderaumvolumen = f"{int(round(wert, 0)):,}".replace(",", ".")
+                elif voll_vol:
+                    laderaumvolumen = f"{int(round(voll_vol, 0)):,}".replace(",", ".")
+
+            # Zeile zur Tabelle hinzufügen
+            rows.append([
+                umlauf_nr,
+                polygon,
+                schiff,
+                *ts_parts(ts_start),
+                f"{lat_start:.6f}" if isinstance(lat_start, (float, int)) else "-",
+                f"{lon_start:.6f}" if isinstance(lon_start, (float, int)) else "-",
+                *ts_parts(ts_end),
+                f"{lat_end:.6f}" if isinstance(lat_end, (float, int)) else "-",
+                f"{lon_end:.6f}" if isinstance(lon_end, (float, int)) else "-",
+                laderaumvolumen,
+                klasse
+            ])
+
+        except Exception as e:
+            print(f"⚠️ Fehler bei Umlauf {row.get('Umlauf')}: {e}")
+            continue
+
+    return pd.DataFrame(rows, columns=spalten)

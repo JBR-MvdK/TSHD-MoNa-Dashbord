@@ -390,7 +390,7 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #30579f;'>
+                    color: #4e6980;'>
                     <strong>{name}</strong> – {soll_text}{minutes} min
                 </div>""", unsafe_allow_html=True)
 
@@ -423,7 +423,7 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     padding: 6px 10px;
                     margin-bottom: 6px;
                     font-size: 0.95rem;
-                    color: #30579f;'>
+                    color: #4e6980;'>
                     <strong>{name}</strong> – {minutes} min
                 </div>""", unsafe_allow_html=True)
 
