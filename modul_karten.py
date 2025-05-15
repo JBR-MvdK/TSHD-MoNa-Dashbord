@@ -63,7 +63,7 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
         return tooltip
 
     # -------- Status 1 – Leerfahrt (grau) --------
-    df_status1 = df[df["Status"] == 1].dropna(subset=["RW_Schiff", "HW_Schiff"])
+    df_status1 = df[df["Status_neu"] == "Leerfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
     df_status1 = split_by_gap(df_status1)
     for seg_id, segment_df in df_status1.groupby("segment"):
         coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
@@ -79,7 +79,7 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
         ))
 
     # -------- Status 2 – Baggern (blau/grün, je nach Seite) --------
-    df_status2 = df[df["Status"] == 2]
+    df_status2 = df[df["Status_neu"] == "Baggern"]
     df_status2 = split_by_gap(df_status2)
     for seg_id, segment_df in df_status2.groupby("segment"):
         if seite in ["BB", "BB+SB"]:
@@ -110,8 +110,9 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
                 ))
 
     # -------- Status 3 – Vollfahrt (grün) --------
-    df_status3 = df[df["Status"] == 3].dropna(subset=["RW_Schiff", "HW_Schiff"])
+    df_status3 = df[df["Status_neu"] == "Vollfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
     df_status3 = split_by_gap(df_status3)
+
     for seg_id, segment_df in df_status3.groupby("segment"):
         coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
         lons, lats = zip(*coords)
@@ -126,8 +127,10 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
         ))
 
     # -------- Status 4/5/6 – Verbringen (orange) --------
-    df_456 = df[df["Status"].isin([4, 5, 6])].dropna(subset=["RW_Schiff", "HW_Schiff"])
+    df_456 = df[df["Status_neu"] == "Verbringen"].dropna(subset=["RW_Schiff", "HW_Schiff"])
     df_456 = split_by_gap(df_456)
+
+    
     for seg_id, segment_df in df_456.groupby("segment"):
         lons, lats = zip(*segment_df.apply(lambda r: transformer.transform(r["RW_Schiff"], r["HW_Schiff"]), axis=1))
         tooltips = segment_df.apply(tooltip_status1_3, axis=1)

@@ -10,8 +10,7 @@ from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminute
 
 # 🔍 Berechnungsfunktionen für Kennzahlen und TDS-Werte
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
-from modul_berechnungen import berechne_tds_aus_werte, berechne_umlauf_auswertung
-
+from modul_berechnungen import berechne_tds_aus_werte, berechne_umlauf_auswertung, berechne_mittlere_gemischdichte
 
 # -----------------------------------------------------------------------------------------------------
 # 📊 Gesamtzeiten dynamisch anzeigen – abhängig vom gewählten Zeitformat
@@ -124,6 +123,10 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
     daten_export = []   # Rohdaten (für Excel-Export ohne Formatierung)
     kumuliert_feststoff = 0  # Zwischenspeicher für aufsummiertes Feststoffvolumen
 
+    # 📊 Mittlere Gemischdichte pro Umlauf berechnen
+    df_mittelwerte = berechne_mittlere_gemischdichte(df, umlauf_info_df)
+        
+    
     df_manuell = st.session_state.get("df_manuell", pd.DataFrame())
 
     # ⏰ Timestamp-Spalte normieren (falls z.B. aus CSV/Excel eingelesen)
@@ -139,6 +142,11 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
     for _, row in umlauf_info_df.iterrows():
         feststoff_manuell, proz = None, None
         row_time = pd.to_datetime(row.get("Start Baggern"), utc=True)
+
+
+        # 🧩 Mittlere Gemischdichte für diesen Umlauf heraussuchen
+        mitteldichte = df_mittelwerte[df_mittelwerte["Umlauf"] == row["Umlauf"]]["Mittlere_Gemischdichte"]
+        mitteldichte = mitteldichte.iloc[0] if not mitteldichte.empty else None
 
         # 🔍 Passende manuelle Eingabe suchen
         if not df_manuell.empty:
@@ -188,6 +196,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(voll_vol, 0) + " m³",
                 format_de(diff_vol, 0) + " m³",
                 format_de(tds.get("ladungsdichte"), 2) + " t/m³",
+                format_de(mitteldichte, 2) + " t/m³" if mitteldichte else "-",
                 format_de(tds.get("feststoffkonzentration") * 100, 1) + " %" if tds.get("feststoffkonzentration") is not None else "-",
                 format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
@@ -214,6 +223,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             voll_vol,
             diff_vol,
             tds.get("ladungsdichte"),
+            mitteldichte,
             tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
             tds.get("feststoffvolumen"),
             tds.get("feststoffmasse"),
@@ -236,6 +246,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Ladungsvolumen", "voll"),
         ("Ladungsvolumen", "Differenz"),
         ("Ladungs-", "dichte"),
+        ("Gemischdichte", "Mittelwerte"),  
         ("Feststoff", "Konzentr."),
         ("Feststoff", "Volumen"),
         ("Feststoff", "Masse"),

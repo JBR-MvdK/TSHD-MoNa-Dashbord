@@ -30,6 +30,39 @@ def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb)
         "bodenvolumen": bodenvolumen
     }
     
+
+def berechne_mittlere_gemischdichte(df, umlauf_info_df):
+    """
+    Berechnet die mittlere Gemischdichte (BB + SB) für jeden Umlauf,
+    aber nur, wenn Status == 2 und Dichte > 1.0
+    """
+    gemischdichte = []
+
+    for _, row in umlauf_info_df.iterrows():
+        start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
+        ende  = pd.to_datetime(row["Ende"], utc=True)
+
+        df_umlauf = df[(df["timestamp"] >= start) & (df["timestamp"] <= ende)]
+        df_aktiv  = df_umlauf[df_umlauf["Status"] == 2]
+
+        # Filter auf gültige Werte > 1.0
+        gueltige_bb = df_aktiv["Gemischdichte_BB"][df_aktiv["Gemischdichte_BB"] > 1.0]
+        gueltige_sb = df_aktiv["Gemischdichte_SB"][df_aktiv["Gemischdichte_SB"] > 1.0]
+
+        alle = pd.concat([gueltige_bb, gueltige_sb])
+        mittelwert = alle.mean() if not alle.empty else None
+
+        gemischdichte.append({
+            "Umlauf": row["Umlauf"],
+            "Mittlere_Gemischdichte": mittelwert
+        })
+
+    return pd.DataFrame(gemischdichte)
+
+
+
+
+
     
 def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
     """

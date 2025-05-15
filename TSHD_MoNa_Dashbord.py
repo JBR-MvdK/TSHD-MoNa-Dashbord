@@ -1,9 +1,3 @@
-# ==============================================================================================================================
-# 🔵 IMPORTS & HILFSFUNKTIONEN
-# Dieses Modul importiert alle zentralen Abhängigkeiten – sowohl Standardbibliotheken, externe Pakete als auch eigene Module.
-# Die Einteilung erfolgt thematisch: Basisfunktionen, Visualisierung, Geodatenverarbeitung und modulare Analyseschritte.
-# ==============================================================================================================================
-
 # === 🔧 BASIS-MODULE (Standardbibliothek & Basisdatenverarbeitung) ===
 import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz etc.)
 import json            # Verarbeitung von JSON-Dateien (z. B. Laden von Konfigurationsdaten oder Schiffseinstellungen)
@@ -11,111 +5,128 @@ import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern,
 import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
-import os
-from datetime import datetime
+import os              # (doppelt importiert – kann entfernt werden)
+import streamlit as st # Webbasierte Benutzeroberfläche mit interaktiven Elementen
+from datetime import datetime  # Verarbeitung und Formatierung von Zeitstempeln
 
 # === 📊 UI & VISUALISIERUNG ===
-import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
-import plotly.graph_objects as go    # Interaktive Diagramme (z. B. Zeitreihen, Karten, Tooltips)
+import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche (zweiter Import – kann entfallen)
+import plotly.graph_objects as go    # Interaktive Diagramme (z. B. für Zeitverläufe, Tiefenprofile)
 
 # === 🌍 GEODATEN & GEOMETRIE ===
-from shapely.geometry import Point   # Geometrische Abfragen, z. B. Punkt-in-Polygon-Prüfungen
-
+from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinatenberechnungen, z. B. Punkt-in-Polygon
 
 # === 🧩 EIGENE MODULE (Modularisierte Funktionsbausteine für einzelne Analyseschritte) ===
 
-# 🟡 Import und Berechnung technischer TDS-Parameter (z. B. Volumen, Masse, Konzentration)
+# 🟡 Import und Berechnung technischer TDS-Parameter (z. B. Volumen, Masse, Konzentration aus Rohdaten)
 from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
+from modul_tshd_hpa_import import konvertiere_hpa_ascii  # Konvertierung von HPA-Dateien in MoNa-Format
 
-# 🟦 Segmentierung der Fahrtdaten in einzelne Umläufe (Statuslogik)
-from modul_umlaeufe import nummeriere_umlaeufe, extrahiere_umlauf_startzeiten
+# 🟦 Segmentierung der Fahrtdaten in einzelne Umläufe (Statuslogik, Phasenübergänge, Status_neu)
+from modul_umlaeufe import nummeriere_umlaeufe, extrahiere_umlauf_startzeiten, berechne_status_neu
 
-# ⚓ Erkennung der aktiven Baggerseite (Backbord/Steuerbord oder beide)
+# ⚓ Erkennung der aktiven Baggerseite (automatische Analyse BB/SB auf Basis Sensoraktivität)
 from modul_baggerseite import erkenne_baggerseite
 
-# 🌐 Automatische EPSG-Code-Erkennung (für korrekte Geo-Referenzierung)
+# 🌐 Automatische EPSG-Code-Erkennung (zur Georeferenzierung der Positionsdaten)
 from modul_koordinatenerkennung import erkenne_koordinatensystem
 
-# 📥 XML-Import von Baggerfeld-Definitionen (Polygone mit Solltiefe)
+# 📥 XML-Import von Baggerfeld-Definitionen (Polygon-Grenzen und Solltiefen je Feld)
 from modul_baggerfelder_xml_import import parse_baggerfelder
 
-# 📏 Berechnung von Solltiefen entlang des Tracks (basierend auf Polygonzuordnung)
+# 📏 Berechnung von Solltiefen entlang der Fahrtstrecke auf Basis der Baggerfeld-Zuordnung
 from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 
-# 🚢 Streckenberechnung nach Status (Leerfahrt, Baggerfahrt, Verbringen)
+# 🚢 Streckenberechnung nach Betriebsstatus (z. B. Strecke während Leerfahrt, Baggerfahrt etc.)
 from modul_strecken import berechne_strecken
 
-# 📊 Kennzahlen je Umlauf berechnen (z. B. Verdrängung, Ladevolumen, Konzentration)
+# 📊 Berechnung von Kennzahlen pro Umlauf (z. B. Menge, Masse, Dauer, Dichtekennwerte)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
-# 🎯 Strategie zur Erkennung geeigneter Start- und Endzeitpunkte (z. B. min/max, Plateaus)
+# 🎯 Strategie zur Erkennung von Start-/Endzeitpunkten je Parameter (z. B. Ladungsvolumen, Verdrängung)
 from modul_startend_strategie import berechne_start_endwerte
 
-# 🧰 Allgemeine Hilfsfunktionen (z. B. Zeitumrechnung, Formatierung, Spaltenwahl)
+# 🧰 Allgemeine Hilfsfunktionen (Zeitumrechnung, Datenprüfung, Spaltenwahl, Formatierung etc.)
 from modul_hilfsfunktionen import (
-    split_by_gap,                     # Segmentierung bei Zeitlücken
-    convert_timestamp,                # Zeitzonenbewusste Umrechnung von Timestamps
-    format_time, format_de,           # Formatierung von Zahlen und Uhrzeiten
-    plot_x,                           # Zeitachse für Plotly
-    lade_schiffsparameter,            # Laden schiffsspezifischer Parameter (z. B. TDS)
-    pruefe_werte_gegen_schiffsparameter,  # Plausibilitätsprüfung
-    to_hhmmss, to_dezimalstunden, to_dezimalminuten,  # Zeitformat-Konvertierung
-    format_dauer, sichere_dauer, sichere_zeit,        # Sichere Berechnung von Zeitdifferenzen
-    get_spaltenname                  # Dynamischer Zugriff auf BB/SB-Spalten
+    split_by_gap,                     # Segmentierung der Daten bei zeitlichen Lücken
+    convert_timestamp,                # Umwandlung von Timestamps inkl. Zeitzonenbehandlung
+    format_time, format_de,           # Formatierung von Zeit- und Zahlenwerten für Anzeige
+    plot_x,                           # Erzeugung der Zeitachse für Plotly-Grafiken
+    lade_schiffsparameter,            # Laden der JSON-Schiffsparameterdatei
+    pruefe_werte_gegen_schiffsparameter,  # Überprüfung der Rohdaten auf Plausibilität anhand Schiffsdaten
+    to_hhmmss, to_dezimalstunden, to_dezimalminuten,  # Zeitformatkonvertierung in verschiedene Darstellungen
+    format_dauer, sichere_dauer, sichere_zeit,        # Sichere Berechnung und Anzeige von Zeitdifferenzen
+    get_spaltenname,                  # Dynamischer Zugriff auf BB/SB-Spaltennamen je nach Seite
+    setze_schiff_manuell_wenn_notwendig,  # Ermöglicht manuelle Auswahl des Schiffs, falls automatischer Abgleich fehlschlägt
+    erkenne_datenformat,              # Erkennung des Dateiformats (z. B. MoNa oder HPA)
+    erkenne_schiff_aus_dateiname      # Extraktion des Schiffnamens aus Dateinamen
 )
 
-# === 🪟 STREAMLIT UI-PANELS (zur Visualisierung von Kennzahlen, Strecken, Baggerfeldern etc.) ===
+# === 🪟 STREAMLIT UI-PANELS (visuelle Komponenten für Status, Kennzahlen, Strecken etc.) ===
 from modul_ui_panels import (
-    zeige_statuszeiten_panels,         # Zeitliche Aufschlüsselung pro Status
-    zeige_baggerwerte_panels,          # Volumen, Masse, Konzentration, etc.
-    zeige_strecken_panels,             # Darstellung der zurückgelegten Strecken
-    zeige_bagger_und_verbringfelder,   # Interaktive Anzeige der betroffenen Polygone
-    zeige_statuszeiten_panels_mit_strecke,
+    zeige_statuszeiten_panels,         # Visualisierung der Phasenzeiten je Umlauf
+    zeige_baggerwerte_panels,          # Anzeigen von Baggerparametern wie Volumen, Masse, Dichte
+    zeige_strecken_panels,             # Anzeige der Strecken je Phase (Leerfahrt, Baggern, Vollfahrt, Verklappung)
+    zeige_bagger_und_verbringfelder,   # Einfärbung von Bagger- und Verbringfeldern auf der Karte
+    zeige_statuszeiten_panels_mit_strecke,  # Erweiterte Darstellung inkl. zurückgelegter Strecken
     panel_template, strecken_panel_template, dichte_panel_template, feld_panel_template, status_panel_template_mit_strecke
 )
 
-# === 📈 Interaktive Zeitreihengrafiken (Prozessdaten über gesamten Umlauf)
+# === 📈 Interaktive Zeitreihengrafiken zur Prozessdatendarstellung
 from modul_prozessgrafik import zeige_prozessgrafik_tab, zeige_baggerkopftiefe_grafik
 
-# 🔄 Polygonbasierte Auswertungen (z. B. Aufenthaltsdauer je Feld)
+# 🔄 Auswertung: Aufenthaltsdauer in Polygonen (z. B. je Baggerfeld)
 from modul_polygon_auswertung import berechne_punkte_und_zeit
 
-# 🧮 Komplexe Auswertung pro Umlauf (TDS-Berechnung, Kennzahlen, Strecken etc.)
+# 🧮 Erweiterte Berechnung für TDS-/Betriebskennzahlen pro Umlauf
 from modul_berechnungen import berechne_umlauf_auswertung
 
-# 🗂️ Tabellen für alle Umläufe + Zeit-Summen pro Status
+# 🗂️ Erzeugung der Tabellenansichten für Statuszeiten und TDS-Kennzahlen
 from modul_umlauftabelle import (
-    show_gesamtzeiten_dynamisch,
-    erstelle_umlauftabelle,
-    berechne_gesamtzeiten,
-    erzeuge_tds_tabelle, erzeuge_tds_tabelle, erzeuge_verbring_tabelle)
+    show_gesamtzeiten_dynamisch,  # Gesamtdauer je Phase
+    erstelle_umlauftabelle,       # Erzeugung der Detailtabelle aller Umläufe
+    berechne_gesamtzeiten,        # Aufsummieren der Phasen über alle Umläufe
+    erzeuge_tds_tabelle,          # Tabelle mit berechneten TDS-Werten pro Umlauf
+    erzeuge_tds_tabelle,          # (Doppelt importiert – kann bereinigt werden)
+    erzeuge_verbring_tabelle      # Verbringstellen je Umlauf + Export für WSA
+)
 
-# 🗺️ Darstellung der Tracks + Polygone auf interaktiven Karten
+# 🗺️ Visualisierung der Fahrtspuren + Baggerfelder auf der Karte
 from modul_karten import plot_karte, zeige_umlauf_info_karte
 
-# Import der Tagesberichte für Feststoff
+# 📥 Tagesberichte aus Excel importieren (z. B. Feststoffmengen)
 from modul_daten_import import lade_excel_feststoffdaten
+
 
 #==============================================================================================================================
 # 🔵 Start der Streamlit App
 #==============================================================================================================================
 
 # Streamlit Seiteneinstellungen (Titel und Layout)
-st.set_page_config(page_title="TSHD-MoNa Dashboard - MvdK", layout="wide")
-st.title("📊 TSHD-MoNa Dashboard - MvdK")
+st.set_page_config(page_title="TSHD Monitoring – Baggerdatenanalyse", layout="wide")
+st.title("🚢 TSHD Monitoring – Baggerdatenanalyse")
 
-# Sidebar für Datei-Upload
-st.sidebar.header("📂 Datei-Upload")
-
-# --- Upload-Expander für MoNa- und XML-Dateien ---
+# === 📂 Datei-Upload mit automatischer Format-Erkennung ===
 with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):
     uploaded_files = st.file_uploader(
-        "MoNa-Dateien (.txt) auswählen", 
+        "Datendateien (.txt) auswählen", 
         type=["txt"], 
         accept_multiple_files=True,
-        key="mona_upload"
+        key="daten_upload"
     )
-    upload_status = st.empty()  # Dynamischer Platzhalter für spätere Erfolgsmeldungen
+
+    upload_status = st.empty()
+
+    datenformat = None  # Initialisierung
+
+    if uploaded_files:
+        datenformat = erkenne_datenformat(uploaded_files)
+
+        if datenformat in ["MoNa", "HPA"]:
+            st.info(f"📄 Erkanntes Datenformat: **{datenformat}**")
+        else:
+            st.warning("❓ Format konnte nicht eindeutig erkannt werden.")
+            datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
 
     uploaded_xml_files = st.file_uploader(
         "Baggerfeldgrenzen (XML)", 
@@ -123,10 +134,10 @@ with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):
         accept_multiple_files=True,
         key="xml_upload"
     )
-    xml_status = st.empty()  # Platzhalter für XML-Upload-Status
+    
+    xml_status = st.empty()
 
-
-
+   
 #==============================================================================================================================
 # 🔵 Berechnungs-Parameter in der Sidebar
 #==============================================================================================================================
@@ -153,8 +164,28 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
         min_value=0.0, max_value=2.0,
-        value=0.3, step=0.01, format="%.2f"
+        value=0.30, step=0.01, format="%.2f"
     )
+
+    nutze_gemischdichte = st.radio(
+        "Gemischdichte für Startzeitpunkt Baggern und Vollfahrt verwenden?",
+        ["Ja", "Nein"],
+        index=0,
+        horizontal=True
+    ) == "Ja"
+
+    dichte_grenze = st.number_input(
+        "🔎 Grenzwert Gemischdichte für Ende Baggern",
+        min_value=1.0, max_value=1.2, step=0.01, value=1.02,
+        format="%.2f"
+    )
+    
+    rueckblick_minute = st.slider(
+        "⏱️ Rückblickzeit für Dichteprüfung (Minuten)",
+        min_value=0.0, max_value=4.0, step=0.5, value=2.0
+    )
+
+
 
 # --- Solltiefen-Setup ---
 with st.sidebar.expander("📉 Setup - Solltiefen"):
@@ -175,29 +206,41 @@ koordsys_status = st.sidebar.empty()
 #==============================================================================================================================
 # 🔵 MoNa-Daten verarbeiten und vorbereiten
 #==============================================================================================================================
-
-# --- Einlesen der MoNa-Dateien ---
 if uploaded_files:
     try:
-        # Daten aus den hochgeladenen Dateien parsen
-        df, rw_max, hw_max = parse_mona(uploaded_files)
-        
-        # Erfolgsmeldung anzeigen: Wie viele Zeilen wurden geladen?
+        if datenformat == "MoNa":
+            df, rw_max, hw_max = parse_mona(uploaded_files)
+        elif datenformat == "HPA":
+            hpa_files = konvertiere_hpa_ascii(uploaded_files)
+            df, rw_max, hw_max = parse_mona(hpa_files)
+
+    except Exception as e:
+        st.error(f"Fehler beim Laden der Daten: {e}")
+        st.text(traceback.format_exc())
+
+    else:
+        # ✅ Dieser Block wird nur ausgeführt, wenn KEIN Fehler aufgetreten ist
+
+        # Erfolgsmeldung anzeigen
         upload_status.success(f"{len(df)} Zeilen aus {len(uploaded_files)} Datei(en) geladen")
-        
-        
-        # Berechnung zusätzlicher TDS-Parameter (z.B. Dichte, Konzentrationen)
+
+        # TDS-Parameter berechnen
         df = berechne_tds_parameter(df, pf, pw)
-        schiffsnamen = df["Schiffsname"].dropna().unique()
-                
-        # Automatische Erkennung des Koordinatensystems (z.B. UTM, GK)
-        if 'df' in locals() and not df.empty:
+
+        # Versuche, Schiff automatisch aus Dateinamen zu erkennen
+        erkannter_schiffname = erkenne_schiff_aus_dateiname(uploaded_files)
+        if erkannter_schiffname:
+            df["Schiffsname"] = erkannter_schiffname
+            
+        # Koordinatensystem erkennen
+        if not df.empty:
             proj_system, epsg_code, auto_erkannt = erkenne_koordinatensystem(
                 df, st=st, status_element=koordsys_status
             )
+            
+        df, schiffsnamen = setze_schiff_manuell_wenn_notwendig(df, st)
 
-        
-        # --- Basis-Infos extrahieren (Schiffsname, Zeitbereich) ---
+        # Basisinfos: Schiffe & Zeitraum
         schiffe = df["Schiffsname"].dropna().unique()
         if len(schiffe) == 1:
             schiffsname_text = f"**Schiff:** **{schiffe[0]}**"
@@ -205,44 +248,32 @@ if uploaded_files:
             schiffsname_text = f"**Schiffe im Datensatz:** {', '.join(schiffe)}"
         else:
             schiffsname_text = "Keine bekannten Schiffsnamen gefunden."
-        
-        meta_info = st.empty()  # Platzhalter für dynamische Metadaten
 
-        # Zeitbereich absichern, damit bei NaT (z.B. bei leerem df nach Filter) keine Fehler auftreten
         zeit_min = df["timestamp"].min()
         zeit_max = df["timestamp"].max()
-        
-        if pd.isnull(zeit_min) or pd.isnull(zeit_max):
-            zeitraum_text = "Zeitraum: Unbekannt"
-        else:
-            zeitraum_text = f"{zeit_min.strftime('%d.%m.%Y %H:%M:%S')} – {zeit_max.strftime('%d.%m.%Y %H:%M:%S')} UTC"
 
+        zeitraum_text = "Zeitraum: Unbekannt" if pd.isnull(zeit_min) else f"{zeit_min.strftime('%d.%m.%Y %H:%M:%S')} – {zeit_max.strftime('%d.%m.%Y %H:%M:%S')} UTC"
         
-        meta_info.markdown(f"""
-        {schiffsname_text}  
-        **Zeitraum:** {df["timestamp"].min().strftime('%d.%m.%Y %H:%M:%S')} – {df["timestamp"].max().strftime('%d.%m.%Y %H:%M:%S')} UTC  
-        """)
-        
-        # 🎯 Schiffsparameter laden und prüfen
+        st.markdown(f"{schiffsname_text}  \n**Zeitraum:** {zeitraum_text}")
+
+        # Schiffsparameter laden und prüfen
         schiffsparameter = lade_schiffsparameter()
-        
+
         if schiffsparameter:
             if len(schiffsnamen) == 1:
                 st.sidebar.success(f"Schiffsparameter geladen ({len(schiffsparameter)} Schiffe) – {schiffsnamen[0]}")
             else:
                 st.sidebar.success(f"Schiffsparameter geladen ({len(schiffsparameter)} Schiffe)")
-
         else:
             st.sidebar.info("ℹ️ Keine Schiffsparameter-Datei gefunden oder leer.")
-        
 
+        # Plausibilitätsprüfung, falls ein Schiff eindeutig erkannt wurde
         if len(schiffsnamen) == 1:
             schiff = schiffsnamen[0]
             df, fehlerhafte = pruefe_werte_gegen_schiffsparameter(df, schiff, schiffsparameter)
             if fehlerhafte:
                 for spalte, anzahl in fehlerhafte:
-                    st.warning(f"⚠️ {anzahl} Werte aus Spalte **{spalte}** außerhalb der gültigen Grenzen für **{schiff}** – wurden entfernt.")
-
+                    st.warning(f"⚠️ {anzahl} Werte in **{spalte}** außerhalb gültiger Grenzen für **{schiff}** – wurden entfernt.")
 
 #==============================================================================================================================
 # 🔵 # 📋 Schiffsparameter bearbeiten und speichern
@@ -335,20 +366,28 @@ if uploaded_files:
                 
 
             # --- Erweiterung: Zeige die Start-/End-Strategie, wenn vorhanden ---
-            if "StartEndStrategie" in aktuelle_param:
-                st.markdown("#### ⚙️ Start-/Endwert-Strategien")
-                
-                for parameter, strategie in aktuelle_param["StartEndStrategie"].items():
-                    start = strategie.get("Start", "Standard (Statuswechsel)")
-                    ende = strategie.get("Ende", "Standard (Statuswechsel)")
-                    
-                    st.markdown(f"""
-                    - **{parameter}**  
-                      Startwert: _{start}_  
-                      Endwert: _{ende}_
-                    """)
+            if len(schiffe) == 1:
+                schiff = schiffe[0]
+                aktuelle_param = schiffsparameter.get(schiff, {})
+            
+                if "StartEndStrategie" in aktuelle_param:
+                    st.markdown("#### ⚙️ Start-/Endwert-Strategien")
+            
+                    for parameter, strategie in aktuelle_param["StartEndStrategie"].items():
+                        start = strategie.get("Start", "Standard (Statuswechsel)")
+                        ende = strategie.get("Ende", "Standard (Statuswechsel)")
+            
+                        st.markdown(f"""
+                        - **{parameter}**  
+                          Startwert: _{start}_  
+                          Endwert: _{ende}_
+                        """)
+                else:
+                    st.info("ℹ️ Keine speziellen Start-/End-Strategien definiert (Standardverhalten aktiv).")
+            
             else:
-                st.info("ℹ️ Keine speziellen Start-/End-Strategien definiert (Standardverhalten aktiv).")
+                st.info("ℹ️ Kein eindeutiges Schiff erkannt – Start-/Endwert-Strategien werden nicht geladen.")
+
 
 
 #==============================================================================================================================
@@ -366,18 +405,29 @@ if uploaded_files:
             startwert = st.number_input("🔢 Startwert Umlaufzählung", min_value=1, step=1, value=1)
         
         # --- Umläufe berechnen und Umlauftabelle extrahieren ---
-        df = nummeriere_umlaeufe(df, startwert=startwert)
-        umlauf_info_df = extrahiere_umlauf_startzeiten(df, startwert=startwert)
+        umlauf_info_df = extrahiere_umlauf_startzeiten(
+            df,
+            startwert=startwert,
+            min_fahr_speed=min_fahr_speed,
+            nutze_gemischdichte=nutze_gemischdichte,
+            seite=seite,
+            dichte_grenze=dichte_grenze,
+            rueckblick_minute=rueckblick_minute
+        )
+
+
+
         umlauf_info_df_all = umlauf_info_df.copy()
-
-
+        df = berechne_status_neu(df, umlauf_info_df)
         
+
+
+       
         if not umlauf_info_df.empty:
             if "Start Leerfahrt" in umlauf_info_df.columns:
                 umlauf_info_df["start"] = umlauf_info_df["Start Leerfahrt"]
             if "Ende" in umlauf_info_df.columns:
                 umlauf_info_df["ende"] = umlauf_info_df["Ende"]
-        
 
         # Umlauf-Auswahl
         with col_umlauf:
@@ -427,10 +477,11 @@ if uploaded_files:
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
 
+        df = nummeriere_umlaeufe(df, startwert=startwert)  # <- wichtig!
         # Verfügbare Umläufe vorbereiten
         verfuegbare_umlaeufe = df["Umlauf"].dropna().unique()
         verfuegbare_umlaeufe.sort()
-
+        
         # Einzelne Umlaufzeile und zugehörige Kennzahlen vorbereiten
         kennzahlen = {}  # Leeres Dict für Kennzahlen, falls "Alle" gewählt wurde
         row = None       # Platzhalter für die ausgewählte Zeile (einzelner Umlauf)
@@ -458,7 +509,10 @@ if uploaded_files:
 
 # Auswahl der Baggerseite (Auto / BB / SB / BB+SB)
 
+        seite_auswahl = locals().get("seite_auswahl", "Auto")
+        erkannte_seite = locals().get("erkannte_seite", "BB")
         seite = erkannte_seite if seite_auswahl == "Auto" else seite_auswahl
+
         
 
 #==============================================================================================================================
@@ -568,11 +622,12 @@ if uploaded_files:
             "🧪 Debug",
             "💾 Export"
         ])
-
+      
 #==============================================================================================================================
 # Tab 1 - Übersichtskarten 
 #==============================================================================================================================
 
+        
 
         from pyproj import Transformer
         
@@ -803,7 +858,6 @@ if uploaded_files:
                 st.markdown("#### Aufsummierte Dauer")
                 st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
         
-
                 
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
@@ -1228,15 +1282,14 @@ if uploaded_files:
             
                         st.write("**Verbringzeiten pro Feld (Status 4):**")
                         st.dataframe(df_verbring)                    
+        
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
 
+            
 
 #=====================================================================================
-    except Exception as e:
-        st.error(f"Fehler: {e}")
-        st.text(traceback.format_exc())       
-        
-else:
-    st.info("Bitte lade mindestens eine MoNa-Datei hoch.")
+elif not uploaded_files:
+    st.info("Bitte lade mindestens eine Datei hoch.")
+

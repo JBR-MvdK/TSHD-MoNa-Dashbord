@@ -81,35 +81,39 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
 
 
     
-    # 🔲 Sanfte farbliche Hinterlegung der Statusphasen – nur innerhalb des Umlaufs
-    for status, farbe, name in [
-        ([1], "#f9fafb", "Leerfahrt"),
-        ([2], "#f0f6fe", "Baggern"),
-        ([3], "#f9fafb", "Vollfahrt"),
-        ([4, 5, 6], "#ecf9f2", "Verbringen")
-    ]:
-        for s, e in zip(*status_bereiche(df_plot, status)):
-            t0 = df_plot.loc[s, "timestamp"]
-            t1 = df_plot.loc[e, "timestamp"]
+    # 🔲 Neue Phasenhinterlegung anhand Status_neu (aus Umlauftabelle)
+    phasenfarben = {
+        "Leerfahrt": "#f9fafb",
+        "Baggern": "#f0f6fe",
+        "Vollfahrt": "#f9fafb",
+        "Verbringen": "#ecf9f2"
+    }
     
-            # Nur den Teil anzeigen, der innerhalb des Umlaufs liegt
-            t0_clip = max(t0, t_start)
-            t1_clip = min(t1, t_ende)
+    if "Status_neu" in df_plot.columns:
+        for phase, farbe in phasenfarben.items():
+            df_phase = df_plot[df_plot["Status_neu"] == phase]
+            if df_phase.empty:
+                continue
     
-            if t0_clip < t1_clip:
-                fig.add_vrect(
-                    x0=convert_timestamp(t0_clip, zeitzone),
-                    x1=convert_timestamp(t1_clip, zeitzone),
-                    fillcolor=farbe,
-                    layer="below",
-                    line_width=0,
-                    annotation_text=name,
-                    annotation_position="top left"
-                )
-
-
-
-
+            df_phase = split_by_gap(df_phase)
+            for _, segment in df_phase.groupby("segment"):
+                t0 = segment["timestamp"].min()
+                t1 = segment["timestamp"].max()
+    
+                # ✅ Begrenzung auf aktuellen Umlaufzeitraum
+                t0_clip = max(t0, t_start)
+                t1_clip = min(t1, t_ende)
+    
+                if t0_clip < t1_clip:
+                    fig.add_vrect(
+                        x0=convert_timestamp(t0_clip, zeitzone),
+                        x1=convert_timestamp(t1_clip, zeitzone),
+                        fillcolor=farbe,
+                        layer="below",
+                        line_width=0,
+                        annotation_text=phase,
+                        annotation_position="top left"
+                    )
 
 
     # Kurven zeichnen
@@ -203,7 +207,7 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
     df_plot = df.copy().sort_values("timestamp").reset_index(drop=True)
 
     # Ergänze manuelle Solltiefe, falls keine aus XML vorhanden ist
-    if solltiefe is not None:
+    if solltiefe is not None and abs(solltiefe) > 0.01:
         if "Solltiefe_Aktuell" not in df_plot.columns or df_plot["Solltiefe_Aktuell"].isna().all():
             df_plot["Solltiefe_Aktuell"] = solltiefe
             df_plot["Solltiefe_Oben"] = solltiefe + toleranz_oben
@@ -234,11 +238,13 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
         else:
             spalten = [spalten] if spalten in df_plot.columns else []
 
+
         # 🔄 Zeichne Kurven pro Spalte
         for s in spalten:
-            status_mask = df_plot["Status"] == 2
+            status_mask = df_plot.get("Status_neu") == "Baggern"
             df_filtered = df_plot.loc[status_mask, ["timestamp", s]].copy()
             df_filtered = df_filtered.sort_values("timestamp").reset_index(drop=True)
+
 
             # Unterteilung in Segmente bei größeren Zeitlücken
             df_filtered = split_by_gap(df_filtered, max_gap_minutes=2)
