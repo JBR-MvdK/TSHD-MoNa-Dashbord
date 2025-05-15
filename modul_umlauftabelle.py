@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 # 🔧 Formatierungsfunktionen für Zeit- und Zahlenwerte
-from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_de
+from modul_hilfsfunktionen import to_hhmmss, to_dezimalstunden, to_dezimalminuten, format_de, convert_timestamp, format_dauer, uhrzeit_spaltenlabel
 
 # 🔍 Berechnungsfunktionen für Kennzahlen und TDS-Werte
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
@@ -39,18 +39,21 @@ def show_gesamtzeiten_dynamisch(summe_leerfahrt, summe_baggern, summe_vollfahrt,
 # 📅 Erzeugt eine Umlauftabelle mit Zeitpunkten und Zeitdauern je Phase
 # -----------------------------------------------------------------------------------------------------
 def erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat):
-    from modul_hilfsfunktionen import convert_timestamp, format_dauer
+
+    # ✅ Jetzt ist zeitzone verfügbar
+    uhrzeit_label = uhrzeit_spaltenlabel(zeitzone)
 
     # Strukturierte Spalten mit MultiIndex
     columns = pd.MultiIndex.from_tuples([
         ("Umlauf", "Nr."),
         ("Datum", ""),
-        ("Leerfahrt", "Beginn"), ("Leerfahrt", "Dauer"),
-        ("Baggern", "Beginn"), ("Baggern", "Dauer"),
-        ("Vollfahrt", "Beginn"), ("Vollfahrt", "Dauer"),
-        ("Verklappen", "Beginn"), ("Verklappen", "Dauer"),
-        ("Umlauf", "Ende"), ("Umlauf", "Dauer")
+        ("Leerfahrt", uhrzeit_label), ("Leerfahrt", "Dauer"),
+        ("Baggern", uhrzeit_label), ("Baggern", "Dauer"),
+        ("Vollfahrt", uhrzeit_label), ("Vollfahrt", "Dauer"),
+        ("Verklappen", uhrzeit_label), ("Verklappen", "Dauer"),
+        ("Umlauf", uhrzeit_label), ("Umlauf", "Dauer")
     ])
+
 
     rows = []
     dauer_leerfahrt_list, dauer_baggern_list = [], []
@@ -263,11 +266,13 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         pd.DataFrame(daten, columns=spalten),
         pd.DataFrame(daten_export, columns=spalten)
     )
+
+
 # -----------------------------------------------------------------------------------------------------
 # 📈 Tabelle - Verbringstelle mit TDS-Feststoffgesamtwert
 # -----------------------------------------------------------------------------------------------------
-def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
-    import streamlit as st
+def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer, zeitzone, status_col="Status"):
+    uhrzeit_label = uhrzeit_spaltenlabel(zeitzone)
 
     rows = []
 
@@ -276,16 +281,17 @@ def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
         ("Verbringstelle", ""),
         ("Schiff", ""),
         ("Verbringbeginn", "Datum"),
-        ("Verbringbeginn", "Uhrzeit"),
+        ("Verbringbeginn", uhrzeit_label),
         ("Verbringbeginn", "Pos. Nord"),
         ("Verbringbeginn", "Pos. Ost"),
         ("Verbringende", "Datum"),
-        ("Verbringende", "Uhrzeit"),
+        ("Verbringende", uhrzeit_label),
         ("Verbringende", "Pos. Nord"),
         ("Verbringende", "Pos. Ost"),
         ("Laderaumvolumen", "m³"),
         ("Bodenklasse", "")
     ])
+
 
     # TDS-Tabelle aus Session laden, falls vorhanden
     df_tds_export = st.session_state.get("tds_df_export", pd.DataFrame())
@@ -303,8 +309,20 @@ def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
             schiffsnamen = df_umlauf["Schiffsname"].dropna().unique() if "Schiffsname" in df_umlauf.columns else []
             schiff = schiffsnamen[0] if len(schiffsnamen) > 0 else "-"
 
-            # Nur Verbringen (Status 4–6) mit Polygon
-            df_verb = df_umlauf[df_umlauf["Status"].isin([4, 5, 6]) & df_umlauf["Polygon_Name"].notna()]
+            # 👉 Aktive Status-Spalte bestimmen
+            aktive_status_col = status_col
+            if status_col == "Status" and "Status_neu" in df_umlauf.columns:
+                aktive_status_col = "Status_neu"
+
+            # Gültige Werte je nach Statusfeld
+            gueltige_statuswerte = [4, 5, 6] if aktive_status_col == "Status" else ["Verbringen"]
+
+            # ✅ Nur Verbringpunkte mit Polygon und gültigem Status
+            df_verb = df_umlauf[
+                df_umlauf[aktive_status_col].isin(gueltige_statuswerte) &
+                df_umlauf["Polygon_Name"].notna()
+            ]
+
             if df_verb.empty:
                 continue
 
@@ -314,38 +332,40 @@ def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
             ts_end = df_verb.iloc[-1]["timestamp"]
 
             def ts_parts(ts):
-                return ts.strftime("%d.%m.%Y"), ts.strftime("%H:%M:%S")
+                if pd.isna(ts):
+                    return "-", "-"
+                ts_conv = convert_timestamp(pd.to_datetime(ts), zeitzone)
+                return ts_conv.strftime("%d.%m.%Y"), ts_conv.strftime("%H:%M:%S")
 
-            # Koordinaten konvertieren
+            # Koordinaten transformieren
             try:
                 lon_start, lat_start = transformer.transform(df_verb.iloc[0]["RW_Schiff"], df_verb.iloc[0]["HW_Schiff"])
                 lon_end, lat_end = transformer.transform(df_verb.iloc[-1]["RW_Schiff"], df_verb.iloc[-1]["HW_Schiff"])
             except:
                 lat_start = lon_start = lat_end = lon_end = "-"
 
-            # Volumen-Fallback, falls kein TDS vorhanden
+            # Volumen (Backup)
             voll_vol = df_verb["Feststoffvolumen"].dropna().max()
 
-            # Bodenklasse via Dichte aus TDS (falls vorhanden)
+            # Bodenklasse über Dichte
             dichte = None
             if tds_available:
                 tds_zeile = df_tds_export[df_tds_export[("Umlauf", "Nr.")] == umlauf_nr]
                 if not tds_zeile.empty:
                     dichte = tds_zeile.iloc[0][("Ladungs-", "dichte")]
+
             klasse = "Schlick" if pd.notna(dichte) and dichte < 1.6 else "Sand" if pd.notna(dichte) else "-"
 
-            # TDS-Gesamtwert
+            # Gesamtvolumen aus TDS oder Fallback
             laderaumvolumen = "-"
-            if tds_available:
-                tds_zeile = df_tds_export[df_tds_export[("Umlauf", "Nr.")] == umlauf_nr]
-                if not tds_zeile.empty:
-                    wert = tds_zeile.iloc[0][("Feststoff", "Gesamt")]
-                    if pd.notna(wert):
-                        laderaumvolumen = f"{int(round(wert, 0)):,}".replace(",", ".")
-                elif voll_vol:
-                    laderaumvolumen = f"{int(round(voll_vol, 0)):,}".replace(",", ".")
+            if tds_available and not tds_zeile.empty:
+                wert = tds_zeile.iloc[0][("Feststoff", "Gesamt")]
+                if pd.notna(wert):
+                    laderaumvolumen = f"{int(round(wert, 0)):,}".replace(",", ".")
+            elif voll_vol:
+                laderaumvolumen = f"{int(round(voll_vol, 0)):,}".replace(",", ".")
 
-            # Zeile zur Tabelle hinzufügen
+            # 👉 Zeile zur Tabelle hinzufügen
             rows.append([
                 umlauf_nr,
                 polygon,
@@ -365,3 +385,5 @@ def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer):
             continue
 
     return pd.DataFrame(rows, columns=spalten)
+
+

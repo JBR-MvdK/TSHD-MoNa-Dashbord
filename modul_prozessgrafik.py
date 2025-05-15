@@ -33,7 +33,9 @@ def status_bereiche(df, status_liste):
 # 📊 zeige_prozessgrafik_tab – Hauptdiagramm mit Verlauf aller Messgrößen für gewählten Umlauf
 # -------------------------------------------------------------------------------------------------------------------------------
 
-def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="BB+SB", plot_key="prozessgrafik"):
+
+def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, seite="BB+SB", plot_key="prozessgrafik"):
+
     df_full = df.copy()
 
     if row is None:
@@ -50,10 +52,6 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, seite="
         df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
 
     df_plot = df[(df["timestamp"] >= t_start_ext) & (df["timestamp"] <= t_ende_ext)].sort_values("timestamp").reset_index(drop=True)
-
-    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-    df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
-    werte, _ = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df_full) if "Verdraengung" in df_umlauf.columns else ({}, {})
 
     # --- Kurven vorbereiten ---
     kurven_fuellstand = [

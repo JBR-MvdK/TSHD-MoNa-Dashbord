@@ -216,7 +216,7 @@ def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_
 
     col8.markdown(panel_template.format(
         caption="Ladungsdichte",
-        value=format_de(tds_werte.get("ladungsdichte"), 2) + " t/m³" if tds_werte.get("ladungsdichte") is not None else "-",
+        value=format_de(tds_werte.get("ladungsdichte"), 3) + " t/m³" if tds_werte.get("ladungsdichte") is not None else "-",
         change_label1="Wasser:", change_value1=f"{pw:.3f}".replace(".", ",") + " t/m³",
         change_label2="Feststoff:", change_value2=f"{pf:.3f}".replace(".", ",") + " t/m³"
     ), unsafe_allow_html=True)
@@ -365,12 +365,13 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
     if baggerfelder:
         solltiefen_dict = {feld["name"]: feld.get("solltiefe") for feld in baggerfelder}
 
-    # 🕒 Zeiten berechnen – auf Basis von Polygon-Auswertung
-    bagger_df = berechne_punkte_und_zeit(df, statuswert=2)
+    # 🕒 Zeiten berechnen – auf Basis von Polygon-Auswertung (nun über Status_neu)
+    bagger_df = berechne_punkte_und_zeit(df, statuswert="Baggern", status_col="Status_neu")
     bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
-
-    verbring_df = berechne_punkte_und_zeit(df, statuswert=4)
+    
+    verbring_df = berechne_punkte_und_zeit(df, statuswert="Verbringen", status_col="Status_neu")
     verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
+    
 
     # --------------------------------------------------------------------------------------------------
     # 🟦 Baggerfelder anzeigen

@@ -27,7 +27,8 @@ def berechne_umlauf_kennzahlen(row, df):
     df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
 
     # Status == 2 → Baggern
-    df_baggern = df_umlauf[df_umlauf["Status"] == 2]
+    df_baggern = df_umlauf[df_umlauf["Status_neu"] == "Baggern"]
+
 
     # Verdraengung und Volumen bestimmen
     verdraengung_leer, verdraengung_leer_ts, verdraengung_voll, verdraengung_voll_ts = berechne_delta_werte(df_baggern, "Verdraengung")

@@ -3,10 +3,29 @@
 # ======================================================================================================================
 
 import pandas as pd
-
+import streamlit as st
 # ----------------------------------------------------------------------------------------------------------------------
 # 🔧 Hilfsfunktionen
 # ----------------------------------------------------------------------------------------------------------------------
+
+# 🔄 Mapping: Status_neu → numerischer Status
+STATUS_NEU_MAPPING = {
+    "Leerfahrt": 1,
+    "Baggern": 2,
+    "Vollfahrt": 3,
+    "Verbringen": 4,  # optional: auch 5/6 ergänzbar, je nach System
+}
+
+def ersetze_status_neu(df):
+    """
+    Ersetzt die Spalte 'Status_neu' durch numerische Werte gemäß Mapping.
+    Bewahrt Originalspalte 'Status' in 'Status_alt'.
+    """
+    if "Status_neu" in df.columns:
+        df = df.copy()
+        df["Status_alt"] = df["Status"]
+        df["Status"] = df["Status_neu"].map(STATUS_NEU_MAPPING).fillna(df["Status"])
+    return df
 
 def first_or_none(series):
     """Gibt den ersten Wert einer Series zurück oder None, wenn leer."""
@@ -78,6 +97,13 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     Wendet eine Strategie zur Bestimmung von Start- und Endwerten (Verdrängung, Volumen) an.
     Gibt zusätzlich Debug-Infos zurück.
     """
+ 
+
+    df = ersetze_status_neu(df)
+    if df_gesamt is not None:
+        df_gesamt = ersetze_status_neu(df_gesamt)
+
+
 
     debug_info = []
     result = {}

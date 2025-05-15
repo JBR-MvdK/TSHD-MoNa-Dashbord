@@ -63,6 +63,9 @@ def plot_x(df, mask, zeitzone):
         return df.loc[mask, col].dt.tz_convert("Europe/Berlin")
     return df.loc[mask, col]  # default: UTC
 
+def uhrzeit_spaltenlabel(zeitzone):
+    """Liefert den Labeltext für Uhrzeitspalten basierend auf der Zeitzone."""
+    return "Uhrzeit (lokal)" if zeitzone != "UTC" else "Uhrzeit (UTC)"
 
 # --------------------------------------------------------------------------------------------------
 # ⚙️ Schiffsspezifische Parameterfunktionen (z. B. für Plausibilitätsfilterung)

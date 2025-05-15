@@ -114,8 +114,14 @@ def extrahiere_umlauf_startzeiten(
                     (nutze_sb and pd.notnull(dichte_sb) and dichte_sb > 1.0)
                 )
                 if dichte_verfuegbar:
-                    aktueller_umlauf["Start Baggern"] = ts
+                    # 👉 Einen Schritt zurück, falls möglich
+                    if index > 0:
+                        ts_vorher = df.iloc[index - 1]["timestamp"]
+                        aktueller_umlauf["Start Baggern"] = ts_vorher
+                    else:
+                        aktueller_umlauf["Start Baggern"] = ts  # Fallback
                     status_phase = 3
+
             else:
                 aktueller_umlauf["Start Baggern"] = ts
                 status_phase = 3

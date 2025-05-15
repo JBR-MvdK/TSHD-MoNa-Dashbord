@@ -138,7 +138,9 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     # 📏 Streckenberechnung (inkl. 15 min Vorlauf, falls Startpunkt verfehlt)
     # ------------------------------------------------------------
     df_umlauf_ext = df[(df["timestamp"] >= (t_start - pd.Timedelta("15min"))) & (df["timestamp"] <= t_ende)]
-    strecken = berechne_strecken(df_umlauf_ext, "RW_Schiff", "HW_Schiff", "Status", epsg_code)
+    status_col = "Status_neu" if "Status_neu" in df_umlauf_ext.columns else "Status"
+    strecken = berechne_strecken(df_umlauf_ext, "RW_Schiff", "HW_Schiff", status_col, epsg_code)
+
 
     # Formatierung für die Anzeige (z. B. km mit Komma)
     def format_km(val):

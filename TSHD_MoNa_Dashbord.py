@@ -1,17 +1,15 @@
 # === 🔧 BASIS-MODULE (Standardbibliothek & Basisdatenverarbeitung) ===
-import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz etc.)
 import json            # Verarbeitung von JSON-Dateien (z. B. Laden von Konfigurationsdaten oder Schiffseinstellungen)
+import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz etc.)
 import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern, Gruppieren, Zeitreihen)
 import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
-import os              # (doppelt importiert – kann entfernt werden)
-import streamlit as st # Webbasierte Benutzeroberfläche mit interaktiven Elementen
 from datetime import datetime  # Verarbeitung und Formatierung von Zeitstempeln
 
 # === 📊 UI & VISUALISIERUNG ===
-import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche (zweiter Import – kann entfallen)
 import plotly.graph_objects as go    # Interaktive Diagramme (z. B. für Zeitverläufe, Tiefenprofile)
+import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
 
 # === 🌍 GEODATEN & GEOMETRIE ===
 from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinatenberechnungen, z. B. Punkt-in-Polygon
@@ -19,8 +17,8 @@ from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinat
 # === 🧩 EIGENE MODULE (Modularisierte Funktionsbausteine für einzelne Analyseschritte) ===
 
 # 🟡 Import und Berechnung technischer TDS-Parameter (z. B. Volumen, Masse, Konzentration aus Rohdaten)
-from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 from modul_tshd_hpa_import import konvertiere_hpa_ascii  # Konvertierung von HPA-Dateien in MoNa-Format
+from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 
 # 🟦 Segmentierung der Fahrtdaten in einzelne Umläufe (Statuslogik, Phasenübergänge, Status_neu)
 from modul_umlaeufe import nummeriere_umlaeufe, extrahiere_umlauf_startzeiten, berechne_status_neu
@@ -48,32 +46,36 @@ from modul_startend_strategie import berechne_start_endwerte
 
 # 🧰 Allgemeine Hilfsfunktionen (Zeitumrechnung, Datenprüfung, Spaltenwahl, Formatierung etc.)
 from modul_hilfsfunktionen import (
-    split_by_gap,                     # Segmentierung der Daten bei zeitlichen Lücken
     convert_timestamp,                # Umwandlung von Timestamps inkl. Zeitzonenbehandlung
-    format_time, format_de,           # Formatierung von Zeit- und Zahlenwerten für Anzeige
-    plot_x,                           # Erzeugung der Zeitachse für Plotly-Grafiken
-    lade_schiffsparameter,            # Laden der JSON-Schiffsparameterdatei
-    pruefe_werte_gegen_schiffsparameter,  # Überprüfung der Rohdaten auf Plausibilität anhand Schiffsdaten
-    to_hhmmss, to_dezimalstunden, to_dezimalminuten,  # Zeitformatkonvertierung in verschiedene Darstellungen
-    format_dauer, sichere_dauer, sichere_zeit,        # Sichere Berechnung und Anzeige von Zeitdifferenzen
-    get_spaltenname,                  # Dynamischer Zugriff auf BB/SB-Spaltennamen je nach Seite
-    setze_schiff_manuell_wenn_notwendig,  # Ermöglicht manuelle Auswahl des Schiffs, falls automatischer Abgleich fehlschlägt
     erkenne_datenformat,              # Erkennung des Dateiformats (z. B. MoNa oder HPA)
-    erkenne_schiff_aus_dateiname      # Extraktion des Schiffnamens aus Dateinamen
+    erkenne_schiff_aus_dateiname,     # Extraktion des Schiffnamens aus Dateinamen
+    format_dauer, sichere_dauer, sichere_zeit,  # Sichere Berechnung und Anzeige von Zeitdifferenzen
+    format_de, format_time,           # Formatierung von Zeit- und Zahlenwerten für Anzeige
+    get_spaltenname,                  # Dynamischer Zugriff auf BB/SB-Spaltennamen je nach Seite
+    lade_schiffsparameter,            # Laden der JSON-Schiffsparameterdatei
+    plot_x,                           # Erzeugung der Zeitachse für Plotly-Grafiken
+    pruefe_werte_gegen_schiffsparameter,  # Überprüfung der Rohdaten auf Plausibilität anhand Schiffsdaten
+    setze_schiff_manuell_wenn_notwendig,  # Ermöglicht manuelle Auswahl des Schiffs, falls automatischer Abgleich fehlschlägt
+    split_by_gap,                     # Segmentierung der Daten bei zeitlichen Lücken
+    to_dezimalstunden, to_dezimalminuten, to_hhmmss  # Zeitformatkonvertierung in verschiedene Darstellungen
 )
 
 # === 🪟 STREAMLIT UI-PANELS (visuelle Komponenten für Status, Kennzahlen, Strecken etc.) ===
 from modul_ui_panels import (
-    zeige_statuszeiten_panels,         # Visualisierung der Phasenzeiten je Umlauf
-    zeige_baggerwerte_panels,          # Anzeigen von Baggerparametern wie Volumen, Masse, Dichte
-    zeige_strecken_panels,             # Anzeige der Strecken je Phase (Leerfahrt, Baggern, Vollfahrt, Verklappung)
+    feld_panel_template,
+    panel_template,
+    status_panel_template_mit_strecke,
+    strecken_panel_template,
+    dichte_panel_template,
     zeige_bagger_und_verbringfelder,   # Einfärbung von Bagger- und Verbringfeldern auf der Karte
+    zeige_baggerwerte_panels,          # Anzeigen von Baggerparametern wie Volumen, Masse, Dichte
+    zeige_statuszeiten_panels,         # Visualisierung der Phasenzeiten je Umlauf
     zeige_statuszeiten_panels_mit_strecke,  # Erweiterte Darstellung inkl. zurückgelegter Strecken
-    panel_template, strecken_panel_template, dichte_panel_template, feld_panel_template, status_panel_template_mit_strecke
+    zeige_strecken_panels              # Anzeige der Strecken je Phase (Leerfahrt, Baggern, Vollfahrt, Verklappung)
 )
 
 # === 📈 Interaktive Zeitreihengrafiken zur Prozessdatendarstellung
-from modul_prozessgrafik import zeige_prozessgrafik_tab, zeige_baggerkopftiefe_grafik
+from modul_prozessgrafik import zeige_baggerkopftiefe_grafik, zeige_prozessgrafik_tab
 
 # 🔄 Auswertung: Aufenthaltsdauer in Polygonen (z. B. je Baggerfeld)
 from modul_polygon_auswertung import berechne_punkte_und_zeit
@@ -83,12 +85,11 @@ from modul_berechnungen import berechne_umlauf_auswertung
 
 # 🗂️ Erzeugung der Tabellenansichten für Statuszeiten und TDS-Kennzahlen
 from modul_umlauftabelle import (
-    show_gesamtzeiten_dynamisch,  # Gesamtdauer je Phase
-    erstelle_umlauftabelle,       # Erzeugung der Detailtabelle aller Umläufe
     berechne_gesamtzeiten,        # Aufsummieren der Phasen über alle Umläufe
     erzeuge_tds_tabelle,          # Tabelle mit berechneten TDS-Werten pro Umlauf
-    erzeuge_tds_tabelle,          # (Doppelt importiert – kann bereinigt werden)
-    erzeuge_verbring_tabelle      # Verbringstellen je Umlauf + Export für WSA
+    erzeuge_verbring_tabelle,     # Verbringstellen je Umlauf + Export für WSA
+    erstelle_umlauftabelle,       # Erzeugung der Detailtabelle aller Umläufe
+    show_gesamtzeiten_dynamisch   # Gesamtdauer je Phase
 )
 
 # 🗺️ Visualisierung der Fahrtspuren + Baggerfelder auf der Karte
@@ -96,6 +97,7 @@ from modul_karten import plot_karte, zeige_umlauf_info_karte
 
 # 📥 Tagesberichte aus Excel importieren (z. B. Feststoffmengen)
 from modul_daten_import import lade_excel_feststoffdaten
+
 
 
 #==============================================================================================================================
@@ -185,7 +187,11 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
         min_value=0.0, max_value=4.0, step=0.5, value=2.0
     )
 
-
+    nutze_schiffstrategie = st.radio(
+        "Start-/Endstrategien aus Schiffsdaten verwenden?",
+        ["Ja", "Nein"],
+        horizontal=True
+    ) == "Ja"
 
 # --- Solltiefen-Setup ---
 with st.sidebar.expander("📉 Setup - Solltiefen"):
@@ -394,17 +400,21 @@ if uploaded_files:
 # 🔵 Filterleiste und Grundeinstellungen
 #==============================================================================================================================
 
-
-
-        # --- Filteroptionen direkt vor der Hauptanzeige ---
+        # ------------------------------------------------------------------------------------------------
+        # 🔢 1. Vier Spalten nebeneinander: Startwert, Umlaufauswahl, Zeitformat, Zeitzone
+        # ------------------------------------------------------------------------------------------------
         st.markdown("---")
         col_startwert, col_umlauf, col_zeitformat, col_zeitzone = st.columns([1, 1, 1, 1])
         
-        # Startwert der Umlaufzählung setzen
+        # 👈 Auswahl: Startwert der Umlaufzählung (z. B. ab 1 oder höher beginnen)
         with col_startwert:
             startwert = st.number_input("🔢 Startwert Umlaufzählung", min_value=1, step=1, value=1)
         
-        # --- Umläufe berechnen und Umlauftabelle extrahieren ---
+        
+        # ------------------------------------------------------------------------------------------------
+        # 🔄 2. Berechne die Umläufe aus dem Datensatz (Leerfahrt → Baggern → Verbringen ...)
+        #     → nutzt Statuswechsel, Geschwindigkeit, Gemischdichte etc.
+        # ------------------------------------------------------------------------------------------------
         umlauf_info_df = extrahiere_umlauf_startzeiten(
             df,
             startwert=startwert,
@@ -414,45 +424,52 @@ if uploaded_files:
             dichte_grenze=dichte_grenze,
             rueckblick_minute=rueckblick_minute
         )
-
-
-
+        
+        # 🧪 Kopie zur späteren parallelen Verwendung
         umlauf_info_df_all = umlauf_info_df.copy()
+        
+        # 📊 Ergänze df um Status_neu-Spalte: Kennzeichnet z. B. 'Leerfahrt', 'Baggern' ...
         df = berechne_status_neu(df, umlauf_info_df)
         
-
-
-       
+        
+        # ------------------------------------------------------------------------------------------------
+        # 📅 3. Ergänze Spalten für spätere Visualisierungen (Start-/Endzeit als eigene Spalten)
+        # ------------------------------------------------------------------------------------------------
         if not umlauf_info_df.empty:
             if "Start Leerfahrt" in umlauf_info_df.columns:
                 umlauf_info_df["start"] = umlauf_info_df["Start Leerfahrt"]
             if "Ende" in umlauf_info_df.columns:
                 umlauf_info_df["ende"] = umlauf_info_df["Ende"]
-
-        # Umlauf-Auswahl
+        
+        
+        # ------------------------------------------------------------------------------------------------
+        # 🔁 4. Auswahlbox: Welcher einzelne Umlauf soll betrachtet werden?
+        # ------------------------------------------------------------------------------------------------
         with col_umlauf:
             umlauf_options = ["Alle"]
             if not umlauf_info_df.empty and "Umlauf" in umlauf_info_df.columns:
                 umlauf_options += [int(u) for u in umlauf_info_df["Umlauf"]]
         
-            # 👉 Index dynamisch setzen
+            # 🧠 Wenn Session-Flag aktiv ist, setze Auswahl automatisch auf "Alle"
             if st.session_state.get("bereit_fuer_berechnung", False):
-                selected_index = 0  # "Alle" steht immer an Index 0
-                #st.info("🛈 'Alle Umläufe' wurde automatisch ausgewählt.")
+                selected_index = 0
             else:
                 selected_index = umlauf_options.index(
                     st.session_state.get("umlauf_auswahl", "Alle")
                 ) if st.session_state.get("umlauf_auswahl", "Alle") in umlauf_options else 0
         
+            # 📌 Auswahlfeld anzeigen
             umlauf_auswahl = st.selectbox(
                 "🔁 Umlauf auswählen",
                 options=umlauf_options,
                 index=selected_index,
                 key="umlauf_auswahl"
             )
-
-
-        # Zeitformat wählen (hh:mm:ss, Dezimalminuten, Dezimalstunden)
+        
+        
+        # ------------------------------------------------------------------------------------------------
+        # ⏱️ 5. Formatierung für Zeitwerte: klassisch oder dezimal
+        # ------------------------------------------------------------------------------------------------
         with col_zeitformat:
             zeitformat = st.selectbox(
                 "🕒 Zeitformat",
@@ -464,8 +481,11 @@ if uploaded_files:
                     "dezimalstunden": "Dezimalstunden"
                 }[x]
             )
-
-        # Zeitzone auswählen
+        
+        
+        # ------------------------------------------------------------------------------------------------
+        # 🌍 6. Zeitzone für Anzeige wählen (UTC oder Lokalzeit)
+        # ------------------------------------------------------------------------------------------------
         with col_zeitzone:
             zeitzone = st.selectbox(
                 "🌍 Zeitzone",
@@ -473,35 +493,55 @@ if uploaded_files:
                 index=0
             )
 
-        # Zeitzonenanpassung auf Timestamps im DataFrame
+
+
+        # ------------------------------------------------------------------------------------------------
+        # 🕓 7. Zeitzonen prüfen und ggf. auf UTC setzen
+        # ------------------------------------------------------------------------------------------------
+        # Wenn die Zeitstempel noch keine Zeitzone haben (naiv), → auf UTC setzen.
         if df["timestamp"].dt.tz is None:
             df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
-
-        df = nummeriere_umlaeufe(df, startwert=startwert)  # <- wichtig!
-        # Verfügbare Umläufe vorbereiten
+        
+        # ------------------------------------------------------------------------------------------------
+        # 🔁 8. Umläufe im DataFrame nummerieren
+        # ------------------------------------------------------------------------------------------------
+        # → wichtig, da danach die Zuordnung zu 'Umlauf' für Filterung & Anzeige erfolgt
+        df = nummeriere_umlaeufe(df, startwert=startwert)
+        
+        # ------------------------------------------------------------------------------------------------
+        # 🧾 9. Liste der verfügbaren Umläufe vorbereiten (z. B. für Dropdown-Auswahl)
+        # ------------------------------------------------------------------------------------------------
         verfuegbare_umlaeufe = df["Umlauf"].dropna().unique()
         verfuegbare_umlaeufe.sort()
         
-        # Einzelne Umlaufzeile und zugehörige Kennzahlen vorbereiten
-        kennzahlen = {}  # Leeres Dict für Kennzahlen, falls "Alle" gewählt wurde
-        row = None       # Platzhalter für die ausgewählte Zeile (einzelner Umlauf)
-
+        # ------------------------------------------------------------------------------------------------
+        # 🔍 10. Initialisierung für Einzelanzeige: gewählte Zeile + zugehörige Kennzahlen
+        # ------------------------------------------------------------------------------------------------
+        kennzahlen = {}  # Leeres Dictionary – wird nur bei Auswahl eines Umlaufs gefüllt
+        row = None       # Platzhalter für gewählte Umlaufzeile (eine einzelne Zeile aus der Tabelle)
+        
         if umlauf_auswahl != "Alle":
-            # Zeile aus der Umlauftabelle extrahieren, die dem gewählten Umlauf entspricht
+            # 👉 Hole die Zeile, die dem gewählten Umlauf entspricht
             zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
             if not zeile.empty:
-                row = zeile.iloc[0]  # Erste (und einzige) Zeile herausziehen
-                # Kennzahlen (z. B. Mengen, Zeiten, Verdraengung etc.) berechnen
+                row = zeile.iloc[0]  # 🎯 Erste und einzige Treffer-Zeile extrahieren
+                # 📊 Kennzahlen aus dieser Zeile und dem gesamten df berechnen (Volumen, Masse etc.)
                 kennzahlen = berechne_umlauf_kennzahlen(row, df)
-   
+        
+        # ------------------------------------------------------------------------------------------------
+        # 📊 11 Zeitbereich für Detailgrafiken setzen (z. B. Prozessgrafik, Tiefe etc.)
+        # ------------------------------------------------------------------------------------------------
+        # Erweitere den Bereich großzügig um +/- 15 Minuten für Kontextanzeige
         if row is not None:
-            # 📌 Erweiterter Zeitraum für Diagramm + Strategieberechnung
             t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
             t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
-            
+        
+            # 👉 Filtere den DataFrame für genau diesen Zeitraum → df_context = Fokusbereich
             df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
         else:
-            df_context = df.copy()  # Fallback: gesamter Datensatz
+            # Fallback: kein Umlauf ausgewählt → ganzen Datensatz verwenden
+            df_context = df.copy()
+
      
 #==============================================================================================================================
 # 🔵 Baggerseite erkennen und auswählen
@@ -648,6 +688,7 @@ if uploaded_files:
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
                     
+                    
                     # Berechnung der Zeiten aus Polygonauswertung
                     bagger_df = berechne_punkte_und_zeit(df, statuswert=2)
                     bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
@@ -780,10 +821,19 @@ if uploaded_files:
                     row = row_df.iloc[0]
         
                     # Hole Strategie und führe Auswertung durch
-                    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+                    
+                    if nutze_schiffstrategie:
+                        strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+                    else:
+                        strategie = {
+                            "Verdraengung": {"Start": None, "Ende": None},
+                            "Ladungsvolumen": {"Start": None, "Ende": None}
+                        }
+
                     tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
+
         
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
@@ -793,7 +843,7 @@ if uploaded_files:
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📦 Baggerdaten als Diagramm
                 # ----------------------------------------------------------------------------------------------------------------------                    
-                    zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, seite, plot_key="prozessgrafik_tab2")
+                    zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, werte, seite, plot_key="prozessgrafik_tab2")
 
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📊 Zeitliche Phasen anzeigen (Leerfahrt, Baggern und Strecken)
@@ -1033,12 +1083,14 @@ if uploaded_files:
                     st.session_state["df_manuell"] = df_editor_display.copy()
                 
                     # 🔍 Lade Strategie aus Schiffsparametern oder nutze Standardwerte
-                    strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
-                    if not strategie:
+                    if nutze_schiffstrategie:
+                        strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
+                    else:
                         strategie = {
-                            "Verdraengung": {"Start": "standard", "Ende": "standard"},
-                            "Ladungsvolumen": {"Start": "standard", "Ende": "standard"}
+                            "Verdraengung": {"Start": None, "Ende": None},
+                            "Ladungsvolumen": {"Start": None, "Ende": None}
                         }
+
                 
                     with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
                         # 🔢 TDS-Berechnung für alle Umläufe → Anzeige & Export
@@ -1134,7 +1186,15 @@ if uploaded_files:
             
             if not df.empty:
                 # 🔁 Alle Umläufe, unabhängig von Auswahl
-                df_verbring_tab = erzeuge_verbring_tabelle(df_ungefiltert, umlauf_info_df_all, transformer)
+                df_verbring_tab = erzeuge_verbring_tabelle(
+                    df_ungefiltert,
+                    umlauf_info_df_all,
+                    transformer,
+                    zeitzone=zeitzone,  # oder z. B. st.session_state.get("zeitzone")
+                    status_col="Status_neu"
+                )
+
+             
             
                 if df_verbring_tab.empty:
                     st.warning("⚠️ Es wurden keine Verbringstellen erkannt. Stelle sicher, dass mindestens ein Polygonfeld vorhanden ist und Status 4/5/6 enthalten ist.")
@@ -1168,7 +1228,15 @@ if uploaded_files:
 
             if umlauf_auswahl != "Alle":
                 row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
-                strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+                
+                if nutze_schiffstrategie:
+                    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+                else:
+                    strategie = {
+                        "Verdraengung": {"Start": None, "Ende": None},
+                        "Ladungsvolumen": {"Start": None, "Ende": None}
+                    }
+
                 tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
                     df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                 )
