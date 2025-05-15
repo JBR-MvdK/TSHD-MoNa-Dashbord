@@ -110,8 +110,8 @@ def extrahiere_umlauf_startzeiten(
 
             if nutze_gemischdichte:
                 dichte_verfuegbar = (
-                    (nutze_bb and pd.notnull(dichte_bb) and dichte_bb > 1.0) or
-                    (nutze_sb and pd.notnull(dichte_sb) and dichte_sb > 1.0)
+                    (nutze_bb and pd.notnull(dichte_bb) and dichte_bb > dichte_grenze) or
+                    (nutze_sb and pd.notnull(dichte_sb) and dichte_sb > dichte_grenze)
                 )
                 if dichte_verfuegbar:
                     # 👉 Einen Schritt zurück, falls möglich

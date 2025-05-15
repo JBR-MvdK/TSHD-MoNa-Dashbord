@@ -70,7 +70,7 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
         {"spaltenname": "Tiefgang_vorne", "label": "Tiefgang vorne [m]", "farbe": "#5B84B1", "sichtbar": False},
         {"spaltenname": "Tiefgang_hinten", "label": "Tiefgang hinten [m]", "farbe": "#5B84B1", "sichtbar": False},
         {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True},
-        {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#628395", "sichtbar": False, "nur_baggern": True},
+        {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#C9A227", "sichtbar": False, "nur_baggern": True},
         {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#7D8CA3", "sichtbar": True},
         {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#8E735B", "sichtbar": False},
     ] + kurven_fuellstand
