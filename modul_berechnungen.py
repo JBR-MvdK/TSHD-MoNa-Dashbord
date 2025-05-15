@@ -34,7 +34,8 @@ def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb)
 def berechne_mittlere_gemischdichte(df, umlauf_info_df):
     """
     Berechnet die mittlere Gemischdichte (BB + SB) für jeden Umlauf,
-    aber nur, wenn Status == 2 und Dichte > 1.0
+    basierend auf Status == 2 oder Status_neu == "Baggern",
+    und nur für Werte > 1.0
     """
     gemischdichte = []
 
@@ -43,7 +44,12 @@ def berechne_mittlere_gemischdichte(df, umlauf_info_df):
         ende  = pd.to_datetime(row["Ende"], utc=True)
 
         df_umlauf = df[(df["timestamp"] >= start) & (df["timestamp"] <= ende)]
-        df_aktiv  = df_umlauf[df_umlauf["Status"] == 2]
+
+        # 👉 Status-Spalte wählen
+        status_col = "Status_neu" if "Status_neu" in df_umlauf.columns else "Status"
+        gueltige_status = "Baggern" if status_col == "Status_neu" else 2
+
+        df_aktiv = df_umlauf[df_umlauf[status_col] == gueltige_status]
 
         # Filter auf gültige Werte > 1.0
         gueltige_bb = df_aktiv["Gemischdichte_BB"][df_aktiv["Gemischdichte_BB"] > 1.0]
@@ -58,6 +64,7 @@ def berechne_mittlere_gemischdichte(df, umlauf_info_df):
         })
 
     return pd.DataFrame(gemischdichte)
+
 
 
 

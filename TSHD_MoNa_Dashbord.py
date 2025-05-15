@@ -178,12 +178,12 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
 
     dichte_grenze = st.number_input(
         "🔎 Grenzwert Gemischdichte für Ende Baggern",
-        min_value=1.0, max_value=1.2, step=0.01, value=1.02,
+        min_value=1.0, max_value=1.2, step=0.01, value=1.11,
         format="%.2f"
     )
     
     rueckblick_minute = st.slider(
-        "⏱️ Rückblickzeit für Dichteprüfung (Minuten)",
+        "⏱️ Rückblickzeit für Dichteprüfung (Minuten)", 
         min_value=0.0, max_value=4.0, step=0.5, value=2.0
     )
 

@@ -127,11 +127,11 @@ def extrahiere_umlauf_startzeiten(
                 status_phase = 3
 
         # Phase 3: Start Vollfahrt – Rückblick von Status 3 in die letzten Minuten von Status 2
+        # Phase 3: Start Vollfahrt – Rückblick von Status 3 in die letzten Minuten von Status 2
         elif status_phase == 3 and status_vorher == 2 and status == 3:
             ts_grenze = ts - pd.Timedelta(minutes=rueckblick_minute)
-            best_ts = None
-            last_valid_found = False
-
+            gueltiger_dichte_ts = None
+        
             for j in range(index - 1, -1, -1):
                 row_prev = df.iloc[j]
                 ts_prev = row_prev["timestamp"]
@@ -139,25 +139,35 @@ def extrahiere_umlauf_startzeiten(
                     break
                 if int(row_prev["Status"]) != 2:
                     continue
-
+        
                 dichte_bb = pd.to_numeric(row_prev.get("Gemischdichte_BB", None), errors="coerce")
                 dichte_sb = pd.to_numeric(row_prev.get("Gemischdichte_SB", None), errors="coerce")
-
+        
                 if nutze_gemischdichte:
-                    gilt_bb = nutze_bb and pd.notnull(dichte_bb) and dichte_bb < dichte_grenze
-                    gilt_sb = nutze_sb and pd.notnull(dichte_sb) and dichte_sb < dichte_grenze
-
-                    if gilt_bb or gilt_sb:
-                        best_ts = ts_prev
-                        last_valid_found = True
-                    elif last_valid_found:
-                        break
+                    bb_ok = nutze_bb and pd.notnull(dichte_bb) and dichte_bb <= dichte_grenze
+                    sb_ok = nutze_sb and pd.notnull(dichte_sb) and dichte_sb <= dichte_grenze
+        
+                    if bb_ok or sb_ok:
+                        gueltiger_dichte_ts = ts_prev  # merke diesen gültigen Punkt
                 else:
-                    best_ts = ts_prev
+                    gueltiger_dichte_ts = ts_prev
                     break
-
-            aktueller_umlauf["Start Vollfahrt"] = best_ts if best_ts else ts
+        
+            # ⏩ Einen Datenpunkt nach dem gültigen nehmen (wenn möglich)
+            start_vollfahrt_ts = ts
+            if gueltiger_dichte_ts:
+                df_after = df[df["timestamp"] > gueltiger_dichte_ts]
+                next_row = df_after.iloc[0] if not df_after.empty else None
+                if next_row is not None:
+                    start_vollfahrt_ts = next_row["timestamp"]
+                else:
+                    start_vollfahrt_ts = gueltiger_dichte_ts  # Fallback
+        
+            aktueller_umlauf["Start Vollfahrt"] = start_vollfahrt_ts
             status_phase = 4
+
+
+
 
         # Phase 4: Verklappung / Pumpen / Rainbow (Ende eines Umlaufs)
         elif status_phase == 4 and status in [4, 5, 6]:
