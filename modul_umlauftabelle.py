@@ -148,15 +148,17 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
 
 
         # 🧩 Mittlere Gemischdichte für diesen Umlauf heraussuchen
-        mitteldichte = df_mittelwerte[df_mittelwerte["Umlauf"] == row["Umlauf"]]["Mittlere_Gemischdichte"]
-        mitteldichte = mitteldichte.iloc[0] if not mitteldichte.empty else None
+        #mitteldichte = df_mittelwerte[df_mittelwerte["Umlauf"] == row["Umlauf"]]["Mittlere_Gemischdichte"]
+        #mitteldichte = mitteldichte.iloc[0] if not mitteldichte.empty else None
 
-        # 🔍 Passende manuelle Eingabe suchen
+        # 🧩 Ortsdichte aus df_manuell holen (manuelle Eingabe)
+        ortsdichte = None
         if not df_manuell.empty:
             treffer = df_manuell[df_manuell["timestamp_beginn_baggern"] == row_time]
             if not treffer.empty:
                 feststoff_manuell = treffer.iloc[0].get("feststoff")
                 proz = treffer.iloc[0].get("proz_wert")
+                ortsdichte = treffer.iloc[0].get("ortsdichte")
 
         try:
             # Kontext: Zeitraum rund um den Umlauf
@@ -199,7 +201,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(voll_vol, 0) + " m³",
                 format_de(diff_vol, 0) + " m³",
                 format_de(tds.get("ladungsdichte"), 3) + " t/m³",
-                format_de(mitteldichte, 3) + " t/m³" if mitteldichte else "-",
+                format_de(ortsdichte, 3) + " t/m³" if ortsdichte else "-",
                 format_de(tds.get("feststoffkonzentration") * 100, 1) + " %" if tds.get("feststoffkonzentration") is not None else "-",
                 format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
@@ -226,7 +228,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             voll_vol,
             diff_vol,
             tds.get("ladungsdichte"),
-            mitteldichte,
+            ortsdichte,
             tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
             tds.get("feststoffvolumen"),
             tds.get("feststoffmasse"),
@@ -249,7 +251,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Ladungsvolumen", "voll"),
         ("Ladungsvolumen", "Differenz"),
         ("Ladungs-", "dichte"),
-        ("Gemischdichte", "Mittelwerte"),  
+        ("Ortdichte", ""),  
         ("Feststoff", "Konzentr."),
         ("Feststoff", "Volumen"),
         ("Feststoff", "Masse"),
@@ -363,7 +365,7 @@ def erzeuge_verbring_tabelle(df, umlauf_info_df, transformer, zeitzone, status_c
                 if pd.notna(wert):
                     laderaumvolumen = f"{int(round(wert, 0)):,}".replace(",", ".")
             elif voll_vol:
-                laderaumvolumen = f"{int(round(voll_vol, 0)):,}".replace(",", ".")
+                laderaumvolumen = "-"
 
             # 👉 Zeile zur Tabelle hinzufügen
             rows.append([

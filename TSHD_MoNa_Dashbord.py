@@ -948,8 +948,9 @@ if uploaded_files:
                             help="CSV oder Excel mit: timestamp_beginn_baggern ODER Datum/Uhrzeit, Feststoff, Zentrifuge"
                         )
         
+
                         if uploaded_file:
-        
+                        
                             # CSV-Import
                             if uploaded_file.name.endswith(".csv"):
                                 df_csv = pd.read_csv(uploaded_file, parse_dates=["timestamp_beginn_baggern"])
@@ -958,27 +959,27 @@ if uploaded_files:
                                 else:
                                     df_csv["timestamp_beginn_baggern"] = df_csv["timestamp_beginn_baggern"].dt.tz_convert("UTC")
                                 merge_typ = "exact"
-        
+                        
                             # Excel-Import
                             elif uploaded_file.name.endswith(".xlsx"):
                                 df_csv = lade_excel_feststoffdaten(uploaded_file, zeitzone="Europe/Berlin")
                                 merge_typ = "tolerant"
-        
+                        
                             else:
                                 st.warning("Nur CSV oder Excel-Dateien sind erlaubt.")
                                 st.stop()
-        
+                        
                             # Vorbereiten der Basisdaten für den Merge
                             df_basis = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
                             df_basis = df_basis.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
                             df_basis["timestamp_beginn_baggern"] = pd.to_datetime(df_basis["timestamp_beginn_baggern"], utc=True)
-        
+                        
                             df_csv = df_csv[df_csv["timestamp_beginn_baggern"].notna()].copy()
                             df_csv["timestamp_beginn_baggern"] = pd.to_datetime(df_csv["timestamp_beginn_baggern"], utc=True)
-        
+                        
                             df_basis = df_basis.sort_values("timestamp_beginn_baggern")
                             df_csv = df_csv.sort_values("timestamp_beginn_baggern")
-        
+                        
                             # Merge je nach Typ (exakt oder tolerant)
                             if merge_typ == "exact":
                                 df_merged = pd.merge(
@@ -995,23 +996,35 @@ if uploaded_files:
                                     direction="nearest",
                                     tolerance=pd.Timedelta("5min")
                                 )
-        
+                        
                             # Eventuelle *_csv-Spalten mit echten Spalten kombinieren
                             if "feststoff_csv" in df_merged.columns:
                                 df_merged["feststoff"] = df_merged["feststoff"].combine_first(df_merged["feststoff_csv"])
                             if "proz_wert_csv" in df_merged.columns:
                                 df_merged["proz_wert"] = df_merged["proz_wert"].combine_first(df_merged["proz_wert_csv"])
-        
+                        
+                       
                             # Warnung bei unzugeordneten Werten
                             anzahl_fehlend = df_merged[["feststoff", "proz_wert"]].isna().any(axis=1).sum()
                             if anzahl_fehlend > 0:
                                 st.warning(f"⚠️ {anzahl_fehlend} Einträge konnten nicht zugeordnet werden.")
-        
-                            # Finalen DataFrame sichern
-                            df_final = df_merged[["Umlauf", "timestamp_beginn_baggern", "feststoff", "proz_wert"]]
+                        
+
+                            # 🧾 Finalen DataFrame aufbauen
+                            if "ortsdichte" not in df_merged.columns:
+                                df_merged["ortsdichte"] = None
+                            
+                            spalten_final = ["Umlauf", "timestamp_beginn_baggern", "ortsdichte", "feststoff", "proz_wert"]
+
+
+                        
+                            df_final = df_merged[spalten_final]
+                        
+                            # In Session-State speichern
                             st.session_state["df_manuell"] = df_final
                             st.session_state["editor_alle_umlaeufe_generieren"] = True
                             st.success(f"📥 {df_csv.shape[0]} Einträge aus Datei geladen und gemerged.")
+
         
                 # -------------------------------------------------------------------------------------------------------------
                 # 🔄 Neuaufbau von df_manuell, falls neue Umläufe vorhanden sind
@@ -1022,6 +1035,7 @@ if uploaded_files:
                 if neue_umlaeufe != vorhandene_umlaeufe:
                     df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
                     df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                    df_manuell["ortsdichte"] = None
                     df_manuell["feststoff"] = None
                     df_manuell["proz_wert"] = None
                     st.session_state["df_manuell"] = df_manuell
@@ -1038,6 +1052,7 @@ if uploaded_files:
                         if "Start Baggern" in umlauf_info_df_all.columns:
                             df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
                             df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
+                            df_manuell["ortsdichte"] = None
                             df_manuell["feststoff"] = None
                             df_manuell["proz_wert"] = None
                             st.session_state["df_manuell"] = df_manuell
@@ -1056,6 +1071,7 @@ if uploaded_files:
                             use_container_width=True,
                             column_config={
                                 "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern"),
+                                "ortsdichte": st.column_config.NumberColumn("Ortsdichte (t/m³)", format="%.3f"),
                                 "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
                                 "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
                             },
@@ -1414,9 +1430,7 @@ if uploaded_files:
                     
                         else:
                             st.warning("⚠️ AMOB-Dauer wurde nicht berechnet oder ist `None`.")
-
-
-                
+ 
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
