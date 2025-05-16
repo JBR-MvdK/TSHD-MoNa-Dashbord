@@ -1082,7 +1082,7 @@ if uploaded_files:
                                     st.rerun()
                             else:
                                 submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
-
+        
                 
                 # 🔁 Nach der Formulareingabe
                 if submitted:
@@ -1162,7 +1162,7 @@ if uploaded_files:
                 # ⬇️ CSV-Export: manuelle Feststoffdaten
                 if st.session_state.get("export_ready"):
                     st.download_button(
-                        label="⬇️ Manuelle Feststoffwerte als .csv speichern",
+                        label="📥 Manuelle Feststoffwerte als .csv speichern",
                         data=st.session_state["export_csv"],
                         file_name=st.session_state["export_filename"],
                         mime="text/csv"
