@@ -97,11 +97,15 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
             for _, segment in df_phase.groupby("segment"):
                 t0 = segment["timestamp"].min()
                 t1 = segment["timestamp"].max()
-    
+            
+                # ➕ Versuche, den nächsten Timestamp nach t1 zu finden
+                df_after = df_plot[df_plot["timestamp"] > t1]
+                t1_erweitert = df_after["timestamp"].min() if not df_after.empty else t1
+            
                 # ✅ Begrenzung auf aktuellen Umlaufzeitraum
                 t0_clip = max(t0, t_start)
-                t1_clip = min(t1, t_ende)
-    
+                t1_clip = min(t1_erweitert, t_ende)
+            
                 if t0_clip < t1_clip:
                     fig.add_vrect(
                         x0=convert_timestamp(t0_clip, zeitzone),
@@ -112,6 +116,7 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
                         annotation_text=phase,
                         annotation_position="top left"
                     )
+
 
 
     # Kurven zeichnen
