@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 def berechne_strecke_status(df, status, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status"):
     """
@@ -16,9 +17,13 @@ def berechne_strecke_status(df, status, rw_col="RW_Schiff", hw_col="HW_Schiff", 
     - Gesamtstrecke in Kilometern (float)
     """
 
+
     # Filtere Zeilen mit gewünschtem Statuswert und sortiere sie nach Zeit
     df_status = df[df[status_col] == status].sort_values("timestamp")
-    
+
+    # 🪵 Debug-Info: welche Statusspalte wird verwendet?
+    #st.info(f"🧭 Verwendete Statusspalte zur Streckenberechnung: **{status_col}**")
+
     if df_status.empty:
         return 0.0  # Kein passender Abschnitt gefunden
 
@@ -28,29 +33,34 @@ def berechne_strecke_status(df, status, rw_col="RW_Schiff", hw_col="HW_Schiff", 
     return np.sum(dists)
 
 
-def berechne_strecken(df, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status", epsg_code=None):
+def berechne_strecken(df, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col=None, epsg_code=None):
     """
-    Berechnet die Strecken für alle relevanten Fahrphasen:
+    Berechnet die Strecken für alle relevanten Fahrphasen.
 
-    Je nach gewählter Spalte (Status vs. Status_neu) unterscheidet sich die Auswertung:
-    - 'Status': klassisch numerisch (1=Leerfahrt, 2=Baggern, ...)
-    - 'Status_neu': symbolisch ('Leerfahrt', 'Baggern', ...)
+    Automatischer Wechsel zu 'Status_neu', wenn Spalte vorhanden ist.
 
     Rückgabe:
-    - Dictionary mit Strecken (in km) je Phase: leerfahrt, baggern, vollfahrt, verbringen, gesamt (optional)
+    - Dictionary mit Strecken (in km) je Phase
     """
 
+    # 🔁 Automatischer Wechsel zu Status_neu wenn vorhanden
+    if status_col is None:
+        status_col = "Status_neu" if "Status_neu" in df.columns else "Status"
+
+
+
+
     if status_col == "Status_neu":
-        # 💡 Phasenlogik über neue Statusbezeichnungen (Strings)
+        # 💡 Neue symbolische Statuswerte
         return {
             "leerfahrt": berechne_strecke_status(df, "Leerfahrt", rw_col, hw_col, status_col),
             "baggern": berechne_strecke_status(df, "Baggern", rw_col, hw_col, status_col),
             "vollfahrt": berechne_strecke_status(df, "Vollfahrt", rw_col, hw_col, status_col),
             "verbringen": berechne_strecke_status(df, "Verbringen", rw_col, hw_col, status_col),
-            "gesamt": None  # Kann bei Bedarf summiert werden
+            "gesamt": None
         }
     else:
-        # 🧮 Klassische Statuslogik (1–6)
+        # 🧮 Klassische numerische Statuswerte
         return {
             "leerfahrt": berechne_strecke_status(df, 1, rw_col, hw_col, status_col),
             "baggern": berechne_strecke_status(df, 2, rw_col, hw_col, status_col),
@@ -60,5 +70,6 @@ def berechne_strecken(df, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="St
             ]),
             "gesamt": None
         }
+
 
 

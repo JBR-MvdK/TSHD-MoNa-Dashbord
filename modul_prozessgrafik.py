@@ -55,7 +55,7 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
 
     # --- Kurven vorbereiten ---
     kurven_fuellstand = [
-        {"spaltenname": col, "label": f"{col.replace('_', ' ')} [m]", "farbe": "#AAB7B8", "sichtbar": False, "dicke": 1}
+        {"spaltenname": col, "label": f"{col.replace('_', ' ')} [m]", "farbe": "#AAB7B8", "sichtbar": False, "width": 1}
         for col in [
             'Fuellstand_BB_vorne', 'Fuellstand_SB_vorne',
             'Fuellstand_BB_mitte', 'Fuellstand_SB_mitte',
@@ -64,15 +64,15 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
     ]
 
     kurven_haupt = [
-        {"spaltenname": "Status", "label": "Status", "farbe": "#BDBDBD", "sichtbar": False},
-        {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#3D5A80", "sichtbar": False},
-        {"spaltenname": "Geschwindigkeit", "label": "Geschwindigkeit [knt]", "farbe": "#186A3B", "sichtbar": False},
-        {"spaltenname": "Tiefgang_vorne", "label": "Tiefgang vorne [m]", "farbe": "#5B84B1", "sichtbar": False},
-        {"spaltenname": "Tiefgang_hinten", "label": "Tiefgang hinten [m]", "farbe": "#5B84B1", "sichtbar": False},
-        {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True},
-        {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#C9A227", "sichtbar": False, "nur_baggern": True},
-        {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#7D8CA3", "sichtbar": True},
-        {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#8E735B", "sichtbar": False},
+        {"spaltenname": "Status", "label": "Status", "farbe": "#BDBDBD", "sichtbar": False, "width": 1, "dash": "dot"},
+        {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#3D5A80", "sichtbar": False, "width": 1, "dash": "solid"},
+        {"spaltenname": "Geschwindigkeit", "label": "Geschwindigkeit [knt]", "farbe": "#186A3B", "sichtbar": False, "width": 1, "dash": "dash"},
+        {"spaltenname": "Tiefgang_vorne", "label": "Tiefgang vorne [m]", "farbe": "#5B84B1", "sichtbar": False, "width": 1, "dash": "solid"},
+        {"spaltenname": "Tiefgang_hinten", "label": "Tiefgang hinten [m]", "farbe": "#5B84B1", "sichtbar": False, "width": 1, "dash": "solid"},
+        {"spaltenname": "Verdraengung", "label": "Verdrängung [t]", "farbe": "#A67C52", "sichtbar": True, "width": 2, "dash": "solid"},
+        {"spaltenname": "Ladungsvolumen", "label": "Ladungsvolumen [m³]", "farbe": "#7D8CA3", "sichtbar": True, "width": 2, "dash": "solid"},
+        {"spaltenname": "Gemischdichte_", "label": "Gemischdichte [t/m³]", "farbe": "#C9A227", "sichtbar": False, "nur_baggern": True, "width": 1, "dash": "dot"},
+        {"spaltenname": "Ladungsmasse", "label": "Ladungsmasse [t]", "farbe": "#8E735B", "sichtbar": False, "width": 1, "dash": "dashdot"},
     ] + kurven_fuellstand
 
     fig = go.Figure()
@@ -132,10 +132,16 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
             fig.add_trace(go.Scatter(
                 x=x, y=y_norm, customdata=y,
                 hovertemplate=f"{k['label']} ({s[-2:]}): %{{customdata:.2f}}<extra></extra>",
-                mode="lines", name=k["label"] if len(spalten) == 1 else f"{k['label']} ({s[-2:]})",
-                line=dict(color=k["farbe"], width=k.get("dicke", 2)),
+                mode="lines", 
+                name=k["label"] if len(spalten) == 1 else f"{k['label']} ({s[-2:]})",
+                line=dict(
+                    color=k["farbe"],
+                    width=k.get("width", 2),
+                    dash=k.get("dash", "solid")
+                ),
                 visible=True if k["sichtbar"] else "legendonly"
             ))
+
 
     # Strategielinien
     # Strategielinien mit individuellem Linienstil
@@ -214,8 +220,8 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
 
     # 🔧 Kurvenkonfiguration: welche Linien sollen geplottet werden?
     kurven_abs_tiefe = [
-        {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "dicke": 2, "dash": None},
-        {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "dicke": 2, "dash": "dash"},
+        {"spaltenname": "Abs_Tiefe_Kopf_", "label": "Abs. Tiefe Kopf [m]", "farbe": "#186A3B", "sichtbar": True, "width": 2, "dash": None},
+        {"spaltenname": "Solltiefe_Aktuell", "label": "Solltiefe [m]", "farbe": "#B22222", "sichtbar": True, "width": 2, "dash": "dash"},
     ]
 
     fig2 = go.Figure()
@@ -260,7 +266,7 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
                     name=f"{label} ({s[-2:]})" if seg_id == 0 else None,
                     customdata=pd.DataFrame({"original": y}),
                     hovertemplate=f"{label} ({s[-2:]}): %{{customdata[0]:.2f}}<extra></extra>",
-                    line=dict(color=farbe, width=k.get("dicke", 2), dash=k.get("dash", None)),
+                    line=dict(color=farbe, width=k.get("width", 2), dash=k.get("dash", None)),
                     visible=True,
                     connectgaps=False,
                     showlegend=(seg_id == 0),

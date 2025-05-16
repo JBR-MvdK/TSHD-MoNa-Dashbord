@@ -127,7 +127,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
     kumuliert_feststoff = 0  # Zwischenspeicher für aufsummiertes Feststoffvolumen
 
     # 📊 Mittlere Gemischdichte pro Umlauf berechnen
-    df_mittelwerte = berechne_mittlere_gemischdichte(df, umlauf_info_df)
+    df_mittelwerte = berechne_mittlere_gemischdichte(df, umlauf_info_df, debug=False)
         
     
     df_manuell = st.session_state.get("df_manuell", pd.DataFrame())

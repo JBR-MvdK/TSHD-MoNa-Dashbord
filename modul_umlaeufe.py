@@ -51,8 +51,9 @@ def extrahiere_umlauf_startzeiten(
     min_fahr_speed=0.3,
     nutze_gemischdichte=True,
     seite=None,
-    dichte_grenze=1.01,
-    rueckblick_minute=2
+    dichte_grenze=1.10,
+    rueckblick_minute=2,
+    min_vollfahrt_dauer_min=1.0
 ):
     """
     Extrahiert Start- und Endzeiten je Umlauf anhand definierter Übergangslogik (Status & Sensordaten).
@@ -126,9 +127,29 @@ def extrahiere_umlauf_startzeiten(
                 aktueller_umlauf["Start Baggern"] = ts
                 status_phase = 3
 
-        # Phase 3: Start Vollfahrt – Rückblick von Status 3 in die letzten Minuten von Status 2
+
         # Phase 3: Start Vollfahrt – Rückblick von Status 3 in die letzten Minuten von Status 2
         elif status_phase == 3 and status_vorher == 2 and status == 3:
+            # 🧪 Prüfe, ob die folgende Vollfahrtphase lang genug anhält
+            ts_vollfahrt_start_kandidat = row["timestamp"]
+            ts_vollfahrt_grenze = ts_vollfahrt_start_kandidat + pd.Timedelta(minutes=min_vollfahrt_dauer_min)
+        
+            gueltig = False
+            for k in range(index + 1, len(df)):
+                ts_k = df.iloc[k]["timestamp"]
+                status_k = int(df.iloc[k]["Status"])
+                if ts_k >= ts_vollfahrt_grenze:
+                    if status_k == 3:
+                        gueltig = True
+                    break
+                if status_k != 3:
+                    break  # zu früh wieder unterbrochen → keine echte Vollfahrt
+        
+            if not gueltig:
+                index += 1
+                continue  # ➡️ Sonderfall: ignoriere diesen Übergang und mach weiter
+        
+            # ✅ Gültige Vollfahrtphase → Rückblick zur Dichteprüfung
             ts_grenze = ts - pd.Timedelta(minutes=rueckblick_minute)
             gueltiger_dichte_ts = None
         
@@ -148,7 +169,7 @@ def extrahiere_umlauf_startzeiten(
                     sb_ok = nutze_sb and pd.notnull(dichte_sb) and dichte_sb <= dichte_grenze
         
                     if bb_ok or sb_ok:
-                        gueltiger_dichte_ts = ts_prev  # merke diesen gültigen Punkt
+                        gueltiger_dichte_ts = ts_prev
                 else:
                     gueltiger_dichte_ts = ts_prev
                     break
@@ -165,6 +186,7 @@ def extrahiere_umlauf_startzeiten(
         
             aktueller_umlauf["Start Vollfahrt"] = start_vollfahrt_ts
             status_phase = 4
+
 
 
 

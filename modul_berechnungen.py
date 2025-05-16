@@ -1,4 +1,5 @@
 import pandas as pd
+import streamlit as st
 from modul_strecken import berechne_strecken
 from modul_startend_strategie import berechne_start_endwerte
 from modul_hilfsfunktionen import sichere_dauer
@@ -31,13 +32,34 @@ def berechne_tds_aus_werte(verd_leer, verd_voll, vol_leer, vol_voll, pf, pw, pb)
     }
     
 
-def berechne_mittlere_gemischdichte(df, umlauf_info_df):
+def berechne_mittlere_gemischdichte(df, umlauf_info_df, debug=False):
+
     """
     Berechnet die mittlere Gemischdichte (BB + SB) für jeden Umlauf,
     basierend auf Status == 2 oder Status_neu == "Baggern",
     und nur für Werte > 1.0
+
+    Parameter:
+    - df: vollständiger Datenframe mit timestamp und Statusspalten
+    - umlauf_info_df: Zeiträume pro Umlauf
+    - debug: Wenn True, zeigt für jeden Umlauf, welcher Status genutzt wird
+
+    Rückgabe:
+    - DataFrame mit Umlaufnummer und mittlerer Gemischdichte
     """
+
     gemischdichte = []
+
+    # Wähle Statusspalte basierend auf gesamt-DF, nicht df_umlauf
+    status_col = "Status_neu" if "Status_neu" in df.columns else "Status"
+    gueltige_status = "Baggern" if status_col == "Status_neu" else 2
+
+    #if debug:
+        #debug_msg = f"✅ Status-Kriterium für Filterung: {status_col} == {gueltige_status}"
+        #try:
+            #st.info(debug_msg)
+        #except:
+            #print(debug_msg)
 
     for _, row in umlauf_info_df.iterrows():
         start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
@@ -45,15 +67,11 @@ def berechne_mittlere_gemischdichte(df, umlauf_info_df):
 
         df_umlauf = df[(df["timestamp"] >= start) & (df["timestamp"] <= ende)]
 
-        # 👉 Status-Spalte wählen
-        status_col = "Status_neu" if "Status_neu" in df_umlauf.columns else "Status"
-        gueltige_status = "Baggern" if status_col == "Status_neu" else 2
-
         df_aktiv = df_umlauf[df_umlauf[status_col] == gueltige_status]
 
-        # Filter auf gültige Werte > 1.0
-        gueltige_bb = df_aktiv["Gemischdichte_BB"][df_aktiv["Gemischdichte_BB"] > 1.0]
-        gueltige_sb = df_aktiv["Gemischdichte_SB"][df_aktiv["Gemischdichte_SB"] > 1.0]
+        # Filtere nur Werte > 0.99
+        gueltige_bb = df_aktiv["Gemischdichte_BB"][df_aktiv["Gemischdichte_BB"] > 0.99]
+        gueltige_sb = df_aktiv["Gemischdichte_SB"][df_aktiv["Gemischdichte_SB"] > 0.99]
 
         alle = pd.concat([gueltige_bb, gueltige_sb])
         mittelwert = alle.mean() if not alle.empty else None
@@ -64,6 +82,7 @@ def berechne_mittlere_gemischdichte(df, umlauf_info_df):
         })
 
     return pd.DataFrame(gemischdichte)
+
 
 
 

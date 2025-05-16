@@ -169,6 +169,15 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
         value=0.30, step=0.01, format="%.2f"
     )
 
+    min_vollfahrt_dauer_min = st.number_input(
+        "⏱ Minimale Dauer für gültige Vollfahrtphase nach Status 2→3 (Minuten)",
+        min_value=0.1,
+        max_value=10.0,
+        value=6.0,
+        step=0.1,
+        format="%.1f"
+    )
+
     nutze_gemischdichte = st.radio(
         "Gemischdichte für Startzeitpunkt Baggern und Vollfahrt verwenden?",
         ["Ja", "Nein"],
@@ -178,7 +187,7 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
 
     dichte_grenze = st.number_input(
         "🔎 Grenzwert Gemischdichte für Ende Baggern",
-        min_value=1.0, max_value=1.2, step=0.01, value=1.11,
+        min_value=1.0, max_value=1.2, step=0.01, value=1.10,
         format="%.2f"
     )
     
@@ -422,7 +431,8 @@ if uploaded_files:
             nutze_gemischdichte=nutze_gemischdichte,
             seite=seite,
             dichte_grenze=dichte_grenze,
-            rueckblick_minute=rueckblick_minute
+            rueckblick_minute=rueckblick_minute,
+            min_vollfahrt_dauer_min=min_vollfahrt_dauer_min
         )
         
         # 🧪 Kopie zur späteren parallelen Verwendung
@@ -1114,7 +1124,7 @@ if uploaded_files:
                 
                         # 📏 Einheiten-Zeile passend zu den Spalten
                         einheiten = [
-                            "", "t", "t", "t", "m³", "m³", "m³", "t/m³", "%",
+                            "", "t", "t", "t", "m³", "m³", "m³", "t/m³", "t/m³", "%",
                             "m³", "t", "m³", "m³", "m³", "%", "m³", "m³", "m³"
                         ]
                 
@@ -1152,7 +1162,7 @@ if uploaded_files:
                 # ⬇️ CSV-Export: manuelle Feststoffdaten
                 if st.session_state.get("export_ready"):
                     st.download_button(
-                        label="⬇️ CSV wurde vorbereitet – hier klicken zum Speichern",
+                        label="⬇️ Manuelle Feststoffwerte als .csvV speichern",
                         data=st.session_state["export_csv"],
                         file_name=st.session_state["export_filename"],
                         mime="text/csv"
@@ -1349,8 +1359,40 @@ if uploaded_files:
                         st.dataframe(df_bagger)
             
                         st.write("**Verbringzeiten pro Feld (Status 4):**")
-                        st.dataframe(df_verbring)                    
-        
+                        st.dataframe(df_verbring) 
+                        
+                    with st.expander("🔍 Debug: Statusverlauf prüfen (nur gewählter Umlauf)", expanded=False):
+                        if row is not None and not df.empty:
+                            t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
+                            t_ende = pd.to_datetime(row["Ende"], utc=True)
+                            df_debug = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)][["timestamp", "Status"]].copy()
+                    
+                            if "Status_neu" in df.columns:
+                                df_debug["Status_neu"] = df["Status_neu"]
+                            else:
+                                df_debug["Status_neu"] = "nicht vorhanden"
+                    
+                            st.dataframe(df_debug, use_container_width=True, hide_index=True)
+                    
+                            # 🔢 Status_neu-Auswertung
+                            if "Status_neu" in df_debug.columns:
+                                status_counts = df_debug["Status_neu"].value_counts().reindex(
+                                    ["Leerfahrt", "Baggern", "Vollfahrt", "Verbringen"], fill_value=0
+                                )
+                                unbekannt = df_debug["Status_neu"].isna().sum() + (df_debug["Status_neu"] == "nicht vorhanden").sum()
+                    
+                                st.markdown("**🧮 Status-Phase-Zählung:**")
+                                st.write(f"- 🚢 Leerfahrt: **{status_counts['Leerfahrt']}**")
+                                st.write(f"- ⚒️ Baggern: **{status_counts['Baggern']}**")
+                                st.write(f"- 🛳️ Vollfahrt: **{status_counts['Vollfahrt']}**")
+                                st.write(f"- 🌊 Verbringen: **{status_counts['Verbringen']}**")
+                                st.write(f"- ❓ Unbekannt / nicht vorhanden: **{unbekannt}**")
+                    
+                        else:
+                            st.info("Kein Umlauf oder keine Daten geladen.")
+
+
+
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
