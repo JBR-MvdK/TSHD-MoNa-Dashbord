@@ -4,33 +4,53 @@ import streamlit as st
 
 def berechne_strecke_status(df, status, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col="Status"):
     """
-    Berechnet die Strecke für einen bestimmten Statuswert (z. B. 1, 2, 3, 4...) 
-    oder symbolischen Phasenwert (z. B. 'Leerfahrt', 'Baggern').
+    Berechnet die Strecke für eine bestimmte Betriebsphase (Status), basierend auf den Koordinaten.
+    Bezieht den letzten Punkt vor Beginn sowie den ersten Punkt nach Ende der Phase mit ein,
+    um realistische Übergänge zu berücksichtigen.
 
     Parameter:
-    - df: Pandas DataFrame mit Positionsdaten
-    - status: int oder str → gewünschter Statuswert (numerisch oder als Bezeichner)
-    - rw_col, hw_col: Spaltennamen für Koordinaten (Rechts-/Hochwert)
-    - status_col: 'Status' oder 'Status_neu' – legt fest, mit welcher Spalte gearbeitet wird
+    - df         : Pandas DataFrame mit Zeit- und Positionsdaten
+    - status     : Gewünschter Statuswert (int oder str), z. B. 1 oder "Leerfahrt"
+    - rw_col     : Spaltenname für Rechtswert (X-Koordinate)
+    - hw_col     : Spaltenname für Hochwert (Y-Koordinate)
+    - status_col : Spaltenname für den Status ("Status" oder "Status_neu")
 
     Rückgabe:
     - Gesamtstrecke in Kilometern (float)
     """
 
+    # ⏱️ Zeitlich sortieren
+    df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # Filtere Zeilen mit gewünschtem Statuswert und sortiere sie nach Zeit
-    df_status = df[df[status_col] == status].sort_values("timestamp")
+    # 🔍 Maske für den gewünschten Statuswert
+    mask = df[status_col] == status
+    if not mask.any():
+        return 0.0  # Keine passenden Zeitpunkte vorhanden
 
-    # 🪵 Debug-Info: welche Statusspalte wird verwendet?
-    #st.info(f"🧭 Verwendete Statusspalte zur Streckenberechnung: **{status_col}**")
+    # 📌 Ersten und letzten Index der Statusphase
+    indices = mask[mask].index.tolist()
+    start_idx, end_idx = indices[0], indices[-1]
 
-    if df_status.empty:
-        return 0.0  # Kein passender Abschnitt gefunden
+    # ➕ Punkt direkt vor dem Phasenbeginn hinzufügen (falls möglich)
+    if start_idx > 0:
+        indices = [start_idx - 1] + indices
 
-    # Koordinaten extrahieren und Distanz berechnen (euklidisch, in km)
-    coords = df_status[[rw_col, hw_col]].dropna().values.astype(float)
+    # ➕ Punkt direkt nach dem Phasenende hinzufügen (falls möglich)
+    if end_idx < len(df) - 1:
+        indices = indices + [end_idx + 1]
+
+    # 🔢 Relevante Punkte extrahieren (RW/HW dürfen nicht leer sein)
+    df_sub = df.loc[indices].dropna(subset=[rw_col, hw_col])
+    coords = df_sub[[rw_col, hw_col]].values.astype(float)
+
+    # 🧮 Strecke berechnen (euklidisch, in km)
+    if len(coords) < 2:
+        return 0.0  # Nicht genug Punkte zur Berechnung
+
     dists = np.sqrt(np.sum(np.diff(coords, axis=0)**2, axis=1)) / 1000.0
     return np.sum(dists)
+
+
 
 
 def berechne_strecken(df, rw_col="RW_Schiff", hw_col="HW_Schiff", status_col=None, epsg_code=None):
