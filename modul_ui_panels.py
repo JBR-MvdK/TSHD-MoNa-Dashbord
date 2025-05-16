@@ -186,17 +186,16 @@ def zeige_statuszeiten_panels(row, zeitzone, zeitformat, panel_template):
 # -------------------------------------------------------------------------------------------------
 
 def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template):
-    """
-    Zeigt fünf Panels für Baggerwerte an: Masse, Volumen, Feststoffmasse, Bodenvolumen, Dichte.
-
-    Parameter:
-    - kennzahlen: Dict mit Start/End-Werten und Differenzen
-    - tds_werte: Dict mit TDS-Berechnungen
-    - pw, pf, pb: Dichten Wasser, Feststoff, Boden
-    - Templates für HTML
-    """
     if not kennzahlen:
         return
+
+    # Hole AMOB-Werte aus den Kennzahlen
+    amob_dauer_s = kennzahlen.get("amob_dauer_s")
+    bagger_dauer_s = kennzahlen.get("dauer_baggern_s")
+
+    amob_min = amob_dauer_s / 60 if amob_dauer_s else 0
+    bagger_min = bagger_dauer_s / 60 if bagger_dauer_s else 0
+    amob_anteil = amob_dauer_s / bagger_dauer_s if amob_dauer_s and bagger_dauer_s else 0
 
     col6, col7, col8, col9, col10 = st.columns(5)
 
@@ -221,7 +220,6 @@ def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_
         change_label2="Feststoff:", change_value2=f"{pf:.3f}".replace(".", ",") + " t/m³"
     ), unsafe_allow_html=True)
 
-    
     col9.markdown(panel_template.format(
         caption="Feststoffmasse",
         value=format_de(tds_werte.get("feststoffmasse"), 0) + " t" if tds_werte.get("feststoffmasse") is not None else "-",
@@ -230,11 +228,22 @@ def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_
     ), unsafe_allow_html=True)
 
     col10.markdown(panel_template.format(
-        caption="Bodenvolumen",
-        value=format_de(tds_werte.get("bodenvolumen"), 0) + " m³" if tds_werte.get("bodenvolumen") is not None else "-",
-        change_label1="Bodendichte:", change_value1=f"{pb:.3f}".replace(".", ",") + " t/m³",
-        change_label2="", change_value2=""
+        caption="AMOB-Auswertung",
+        value=format_de(amob_min, 0) + " min" if amob_dauer_s is not None else "-",
+        change_label1="Baggerzeit:",
+        change_value1=format_de(bagger_min, 0) + " min" if bagger_dauer_s else "-",
+        change_label2="AMOB-Anteil:",
+        change_value2=(
+            f"<span style='color: #dc2626;'>{amob_anteil:.1%}</span>".replace(".", ",")
+            if amob_anteil > 0.1 else
+            f"{amob_anteil:.1%}".replace(".", ",")
+        ) if amob_dauer_s and bagger_dauer_s else "-"
+
+        
+        
     ), unsafe_allow_html=True)
+
+
 
 
 

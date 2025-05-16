@@ -83,8 +83,41 @@ def berechne_mittlere_gemischdichte(df, umlauf_info_df, debug=False):
 
     return pd.DataFrame(gemischdichte)
 
+def berechne_amob_dauer(df, seite="BB"):
+    """
+    Summiert die in der AMOB-Zeitspalte erfassten Zeiten während Baggerbetrieb
+    und bei Gemischdichte > 1.06 t/m³.
 
+    Parameter:
+    - df: DataFrame (gefiltert auf Umlauf)
+    - seite: "BB" oder "SB"
 
+    Rückgabe:
+    - AMOB-Gesamtzeit in Sekunden
+    """
+    if df.empty:
+        return 0.0
+
+    status_col = "Status_neu" if "Status_neu" in df.columns else "Status"
+    dichte_col = f"Gemischdichte_{seite}"
+    amob_col = f"AMOB_Zeit_{seite}"
+
+    # Prüfen, ob nötige Spalten da sind
+    if not all(col in df.columns for col in [status_col, dichte_col, amob_col]):
+        return 0.0
+
+    # 🧪 Filter: Baggern + Dichte > 1.06
+    df_filtered = df[
+        (df[status_col] == "Baggern") &
+        (df[dichte_col] > 1.06) &
+        (df[amob_col].notna())
+    ]
+
+    if df_filtered.empty:
+        return 0.0
+
+    # 🕒 Summe der vorkonfektionierten AMOB-Zeitwerte
+    return df_filtered[amob_col].sum()
 
 
 
@@ -181,6 +214,24 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     }
 
     # ------------------------------------------------------------
+    # ⚙️ AMOB-Dauer berechnen (optional: seitenabhängig)
+    # ------------------------------------------------------------
+    nutze_bb = schiffsparameter.get("Einstellungen", {}).get("Nutze_BB", True)
+    nutze_sb = schiffsparameter.get("Einstellungen", {}).get("Nutze_SB", False)
+
+    amob_dauer = 0.0
+    if nutze_bb:
+        amob_dauer += berechne_amob_dauer(df_umlauf, seite="BB")
+    if nutze_sb:
+        amob_dauer += berechne_amob_dauer(df_umlauf, seite="SB")
+
+    # Dauer im Ergebnis zurückgeben (z. B. als Teil der Kennzahlen oder separat)
+    kennzahlen["amob_dauer_s"] = amob_dauer
+    # Dauer der Baggerphase in Sekunden ergänzen
+    kennzahlen["dauer_baggern_s"] = (row["Start Vollfahrt"] - row["Start Baggern"]).total_seconds()
+
+
+    # ------------------------------------------------------------
     # ⏱ Dauerberechnung der einzelnen Phasen (formatiert fürs UI)
     # ------------------------------------------------------------
     dauer_disp = {
@@ -197,8 +248,10 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     return (
         tds_werte, werte, kennzahlen, strecken,
         strecke_disp, dauer_disp, debug_info,
-        bagger_namen, verbring_namen
+        bagger_namen, verbring_namen,
+        amob_dauer
     )
+
 
 # 🔚 Modulexport (optional, aber korrekt)
 __all__ = ["berechne_tds_aus_werte", "berechne_umlauf_auswertung"]

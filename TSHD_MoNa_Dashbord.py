@@ -694,7 +694,7 @@ if uploaded_files:
                     df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
         
                     # Kennzahlen, Strecken etc. berechnen
-                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer = berechne_umlauf_auswertung(
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
                     
@@ -840,7 +840,7 @@ if uploaded_files:
                             "Ladungsvolumen": {"Start": None, "Ende": None}
                         }
 
-                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer = berechne_umlauf_auswertung(
                         df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                     )
 
@@ -1247,7 +1247,7 @@ if uploaded_files:
                         "Ladungsvolumen": {"Start": None, "Ende": None}
                     }
 
-                tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen = berechne_umlauf_auswertung(
+                tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer = berechne_umlauf_auswertung(
                     df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                 )
 
@@ -1391,8 +1391,32 @@ if uploaded_files:
                         else:
                             st.info("Kein Umlauf oder keine Daten geladen.")
 
+                    with st.expander("🧪 AMOB-Dauer (Debug-Ausgabe)", expanded=False):
+                        st.write("📦 Umlauf-Info vorhanden:", not umlauf_info_df.empty)
+                        st.write("📦 Zeitreihe vorhanden:", not df.empty)
+                    
+                        if amob_dauer is not None:
+                            st.success(f"✅ AMOB-Zeit für diesen Umlauf: **{amob_dauer:.1f} Sekunden**")
+                    
+                            # 🕒 Gesamtzeit für Baggern (Status_neu == 'Baggern')
+                            df_bagg = df[(df["Umlauf"] == row["Umlauf"]) & (df["Status_neu"] == "Baggern")].copy()
+                            df_bagg = df_bagg.sort_values("timestamp")
+                    
+                            if not df_bagg.empty:
+                                df_bagg["delta_t"] = df_bagg["timestamp"].diff().dt.total_seconds().fillna(0)
+                                df_bagg["delta_t"] = df_bagg["delta_t"].apply(lambda x: x if x <= 30 else 0)  # Gaps >30 s ignorieren
+                                bagger_dauer_s = df_bagg["delta_t"].sum()
+                    
+                                anteil = (amob_dauer / bagger_dauer_s * 100) if bagger_dauer_s > 0 else 0
+                                st.info(f"🔍 Baggerdauer: **{bagger_dauer_s:.1f} s**, AMOB-Anteil: **{anteil:.1f} %**")
+                            else:
+                                st.warning("⚠️ Keine Datenpunkte mit Status_neu = 'Baggern' im gewählten Umlauf gefunden.")
+                    
+                        else:
+                            st.warning("⚠️ AMOB-Dauer wurde nicht berechnet oder ist `None`.")
 
 
+                
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
