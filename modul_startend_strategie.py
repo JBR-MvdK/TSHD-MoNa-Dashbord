@@ -150,6 +150,111 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         debug_info.append(f"✅ {label}: {art} in {vor} vor bis {nach} nach Statuszeit")
         return wert, ts
 
+    def strategie_wert_vor_extremwert(df, art, ts_ref, vor, nach, col, zeit_col, debug_info, label):
+        """
+        Gibt den Wert *vor dem letzten* Extremwert im Zeitfenster zurück.
+        """
+        if ts_ref is None:
+            debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
+            return None, None
+    
+        t_start = ts_ref - pd.Timedelta(vor)
+        t_ende = ts_ref + pd.Timedelta(nach)
+        df_zeit = df[(df[zeit_col] >= t_start) & (df[zeit_col] <= t_ende)]
+    
+        if df_zeit.empty or col not in df_zeit.columns:
+            debug_info.append(f"⚠️ {label}: Kein gültiger Datenbereich.")
+            return None, None
+    
+        extrem_val = df_zeit[col].max() if art == "max" else df_zeit[col].min()
+        extrem_idx_list = df_zeit[df_zeit[col] == extrem_val].index.tolist()
+    
+        if not extrem_idx_list:
+            return None, None
+    
+        letzter_extrem_idx = extrem_idx_list[-1]
+        idx_liste = list(df_zeit.index)
+        extrem_pos = idx_liste.index(letzter_extrem_idx)
+    
+        if extrem_pos == 0:
+            debug_info.append(f"⚠️ {label}: Kein Wert vor dem letzten Extremwert.")
+            return None, None
+    
+        vor_idx = idx_liste[extrem_pos - 1]
+        ts = df_zeit.loc[vor_idx, zeit_col]
+        val = df_zeit.loc[vor_idx, col]
+        debug_info.append(f"✅ {label}: Wert vor *letztem* {art} in {vor} vor bis {nach} nach Statuszeit")
+        return val, ts
+
+
+    def strategie_wert_vor_letztem_max_nach(df, ts_ref, nach, col, zeit_col, debug_info, label):
+        """
+        Sucht den letzten Maximalwert im Bereich [ts_ref, ts_ref + nach] und gibt den Wert davor zurück.
+        Wenn der Maximalwert am Anfang liegt, wird der vorherige Punkt aus dem Gesamt-DF geholt.
+        """
+        if ts_ref is None:
+            debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
+            return None, None
+    
+        t_start = ts_ref
+        t_ende = ts_ref + pd.Timedelta(nach)
+        df_zeit = df[(df[zeit_col] >= t_start) & (df[zeit_col] <= t_ende)]
+    
+        if df_zeit.empty or col not in df_zeit.columns:
+            debug_info.append(f"⚠️ {label}: Kein gültiger Datenbereich.")
+            return None, None
+    
+        extrem_val = df_zeit[col].max()
+        extrem_idx_list = df_zeit[df_zeit[col] == extrem_val].index.tolist()
+    
+        if not extrem_idx_list:
+            return None, None
+    
+        letzter_extrem_idx = extrem_idx_list[-1]
+    
+        # Finde Position im Gesamt-DF
+        df_indices = df.index.tolist()
+        pos_im_df = df_indices.index(letzter_extrem_idx)
+    
+        if pos_im_df == 0:
+            debug_info.append(f"⚠️ {label}: Max liegt ganz am Anfang der Daten – kein vorheriger Punkt vorhanden.")
+            return None, None
+    
+        vor_idx = df_indices[pos_im_df - 1]
+        ts = df.loc[vor_idx, zeit_col]
+        val = df.loc[vor_idx, col]
+    
+        debug_info.append(f"✅ {label}: Wert vor letztem Max im Bereich [2→3, +{nach}]")
+        return val, ts
+
+
+
+    def strategie_wert_vor_statuswechsel(df, von, nach, col, zeit_col, debug_info, label):
+        """
+        Sucht den Datenpunkt *vor* dem Wechsel von `von` nach `nach` und gibt dessen Wert zurück.
+        """
+        df = df.reset_index(drop=True)  # Index durchgängig machen
+        mask = (df["Status"].shift(1) == von) & (df["Status"] == nach)
+        wechsler_idx = mask[mask].index.tolist()
+    
+        if not wechsler_idx:
+            debug_info.append(f"⚠️ {label}: Kein Statuswechsel {von}→{nach} gefunden.")
+            return None, None
+    
+        idx = wechsler_idx[0]
+        davor_idx = idx - 1 if idx > 0 else None
+    
+        if davor_idx is None or davor_idx not in df.index:
+            debug_info.append(f"⚠️ {label}: Kein Datenpunkt vor dem Statuswechsel.")
+            return None, None
+    
+        ts = df.loc[davor_idx, zeit_col]
+        val = df.loc[davor_idx, col]
+        debug_info.append(f"✅ {label}: Wert direkt vor {von}→{nach}")
+        return val, ts
+
+
+
     # ------------------------------------------------------------------------------------------------------------------
     # 🟦 Verdrängung Start
     # ------------------------------------------------------------------------------------------------------------------
@@ -164,6 +269,8 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         ts_idx = first_index_or_none(sub["Verdraengung"])
         ts = sub.loc[ts_idx, zeit_col] if ts_idx in sub.index else None
         debug_info.append("✅ Verdraengung Start: direkt nach 456→1")
+    elif strat == "ein_davor_1_2":
+        wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Verdraengung", zeit_col, debug_info, "Verdrängung Start")
     else:
         wert, ts = standardwert(df, statuszeit_1_2, "Verdraengung", "Verdraengung Start")
     result["Verdraengung Start"] = wert
@@ -177,6 +284,13 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         wert, ts = strategie_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
     elif strat == "max_in_1min_um_2_3":
         wert, ts = strategie_extremwert(df, "max", statuszeit_2_3, "1min", "1min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
+    elif strat == "vor_max_in_1min_um_2_3":
+        wert, ts = strategie_wert_vor_extremwert(df, "max", statuszeit_2_3, "1min", "1min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
+
+    elif strat == "vor_letztem_max_in_1min_nach_2_3":
+        wert, ts = strategie_wert_vor_letztem_max_nach(df, statuszeit_2_3, "1min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
+        
+        
     else:
         wert, ts = standardwert(df, statuszeit_2_3, "Verdraengung", "Verdraengung Ende")
     result["Verdraengung Ende"] = wert
@@ -199,6 +313,8 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         ts_idx = first_index_or_none(df["Ladungsvolumen"])
         ts = df.loc[ts_idx, zeit_col] if ts_idx in df.index else None
         debug_info.append("✅ Ladungsvolumen Start: erster Wert im Umlauf")
+    elif strat == "ein_davor_1_2":
+        wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
     elif strat == "null":
         wert, ts = 0.0, None
         debug_info.append("✅ Ladungsvolumen Start: null (0.0 m³)")
@@ -226,3 +342,27 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     result["Ladungsvolumen Ende TS"] = ts
 
     return result, debug_info
+
+# ------------------------------------------------------------------------------------------------------------------
+# Strategien für dropdown
+# ------------------------------------------------------------------------------------------------------------------
+
+STRATEGIE_REGISTRY = {
+    "Start": {
+        "standard": "Standard (am Statuswechsel)",
+        "min_in_5vor2nach_1_2": "Minimalwert 5 min vor bis 2 min nach 1→2",
+        "min_in_1min_um_1": "Minimalwert ±1 min um 1→2",
+        "nach_456_auf_1": "Erster Wert nach 456→1",
+        "erster_wert": "Erster Wert im Zyklus",
+        "null": "Fester Wert: 0.0",
+        "ein_davor_1_2": "HPA - Wert direkt vor 1→2"
+    },
+    "Ende": {
+        "standard": "Standard (am Statuswechsel)",
+        "max_in_1min_um_2_3": "Maximalwert ±1 min um 2→3",
+        "max_in_2min_um_2_3": "Maximalwert ±2 min um 2→3",
+        "2min_nach_2_3": "Erster Wert ab 2 min nach 2→3",
+        "vor_letztem_max_in_1min_nach_2_3": "HPA - Wert vor letztem Maximum in 1 min nach 2→3"
+    }
+}
+

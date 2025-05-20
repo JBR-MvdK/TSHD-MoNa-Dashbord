@@ -244,9 +244,58 @@ def zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_
     ), unsafe_allow_html=True)
 
 
+# -------------------------------------------------------------------------------------------------
+# 📦 Baggerwerte (Masse, Volumen, Feststoff, Dichte, Bodenvolumen) Bonus
+# -------------------------------------------------------------------------------------------------
 
 
+def zeige_bonus_abrechnung_panels(tds_werte, dichtewerte, abrechnung, pw, pf, panel_template):
+    col1, col2, col3, col4= st.columns(4)
 
+    # 1️⃣ Panel – Ladungsdichte
+    col1.markdown(panel_template.format(
+        caption="Ladungsdichte",
+        value=format_de(tds_werte.get("ladungsdichte"), 3) + " t/m³" if tds_werte.get("ladungsdichte") else "-",
+        change_label1="min. Baggerdichte:",
+        change_value1=format_de(dichtewerte.get("Mindichte"), 3) + " t/m³" if dichtewerte.get("Mindichte") else "-",
+        change_label2="max. Baggerdichte:",
+        change_value2=format_de(dichtewerte.get("Maxdichte"), 3) + " t/m³" if dichtewerte.get("Maxdichte") else "-"
+    ), unsafe_allow_html=True)        
+        
+        
+
+
+    # 2️⃣ Panel – Ortsdichte
+    col2.markdown(panel_template.format(
+        caption="Ortsdichte",
+        value=format_de(dichtewerte.get("Ortsdichte"), 3) + " t/m³" if dichtewerte.get("Ortsdichte") else "-",
+        change_label1="Wasserdichte:",
+        change_value1=f"{pw:.3f}".replace(".", ",") + " t/m³",
+        change_label2="Feststoffdichte:",
+        change_value2=f"{pf:.3f}".replace(".", ",") + " t/m³"
+    ), unsafe_allow_html=True)
+
+
+    # 3️⃣ Panel – Bonusfaktor
+    col3.markdown(panel_template.format(
+        caption="Bonusfaktor",
+        value=format_de(abrechnung.get("faktor"), 3) if abrechnung.get("faktor") else "-",
+        change_label1="tTDS/m³ (Ladung):",
+        change_value1=format_de(tds_werte.get("feststoffkonzentration") * pf, 3) + " tTDS/m³" if tds_werte.get("feststoffkonzentration") else "-",
+        change_label2="tTDS/m³ (Ortspez.):",
+        change_value2=format_de(dichtewerte.get("Ortsspezifisch"), 3) + " tTDS/m³" if dichtewerte.get("Ortsspezifisch") else "-"
+    ), unsafe_allow_html=True)
+
+    # 4️⃣ Panel – Abrechnungsvolumen
+    col4.markdown(panel_template.format(
+        caption="Abrechnungsvolumen",
+        value=format_de(abrechnung.get("volumen"), 0) + " m³" if abrechnung.get("volumen") else "-",
+        change_label1="Feststoffmasse (TDS):",
+        change_value1=format_de(tds_werte.get("feststoffmasse"), 0) + " t" if tds_werte.get("feststoffmasse") else "-",
+        change_label2="Feststoffvolumen:",
+        change_value2=format_de(tds_werte.get("feststoffvolumen"), 0) + " m³" if tds_werte.get("feststoffvolumen") else "-"
+    ), unsafe_allow_html=True)
+    
 
 # -------------------------------------------------------------------------------------------------
 # 🛤 Strecken- und Zeitangaben je Phase

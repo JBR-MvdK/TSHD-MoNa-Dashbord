@@ -11,7 +11,7 @@ from modul_hilfsfunktionen import convert_timestamp, format_dauer, split_by_gap
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📍 plot_karte – Hauptfunktion zur Darstellung der Fahrtphasen (Status 1–6) auf einer Mapbox-Karte
 # -------------------------------------------------------------------------------------------------------------------------------
-def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None):
+def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None, dichte_polygone=None):
     """
     Visualisiert den Fahrtverlauf anhand des Status-Feldes auf einer interaktiven Karte.
     Unterstützt farblich unterscheidbare Statusphasen (1–6), Tooltip-Darstellung sowie optionale Polygone (Baggerfelder).
@@ -148,7 +148,11 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
         for idx, feld in enumerate(baggerfelder):
             coords = list(feld["polygon"].exterior.coords)
             lons, lats = zip(*coords)
-            tooltip = f"{feld['name']}<br>Solltiefe: {feld['solltiefe']} m"
+            solltiefe = feld.get("solltiefe", 0.0)
+            tooltip = feld["name"]
+            if solltiefe and solltiefe != 0.0:
+                tooltip += f"<br>Solltiefe: {solltiefe:.2f} m"
+ 
             fig.add_trace(go.Scattermapbox(
                 lon=lons, lat=lats, mode="lines+markers",
                 fill="toself", fillcolor="rgba(50, 90, 150, 0.2)",
@@ -158,6 +162,33 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
                 legendgroup="baggerfelder", showlegend=(idx == 0),
                 text=[tooltip] * len(lons), hoverinfo="text"
             ))
+            
+    # -------- Optional: Dichtepolygone (transparente Flächen) --------
+    if dichte_polygone:
+        for idx, p in enumerate(dichte_polygone):
+            if not p["polygon"].is_valid:
+                continue  # Ungültige Geometrie
+
+            coords = list(p["polygon"].exterior.coords)
+            lons, lats = zip(*coords)
+            tooltip = (
+                f"{p['name']}<br>"
+                f"Ortsdichte: {p['ortsdichte']} t/m³<br>"
+            )
+            fig.add_trace(go.Scattermapbox(
+                lon=lons, lat=lats,
+                mode="lines+markers",
+                fill="toself", fillcolor="rgba(200, 50, 50, 0.15)",
+                line=dict(color="rgba(180, 40, 40, 0.9)", width=2),
+                marker=dict(size=3, color="rgba(180, 40, 40, 0.9)"),
+                name="Dichtepolygone" if idx == 0 else None,
+                legendgroup="dichtepolygon", showlegend=(idx == 0),
+                text=[tooltip] * len(lons), hoverinfo="text",
+                visible="legendonly"  # 👈 Das sorgt dafür, dass die Ebene zunächst deaktiviert ist
+            ))
+
+            
+
 
     # -------- Optionaler Marker (z. B. aktuell gewählter Punkt) --------
     if focus_trace:

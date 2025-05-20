@@ -140,16 +140,19 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_localize("UTC", ambiguous="NaT")
         else:
             df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
-
+    
+    kumuliert_abrechnung = 0
+    
     # 🔁 Umläufe durchlaufen
     for _, row in umlauf_info_df.iterrows():
         feststoff_manuell, proz = None, None
         row_time = pd.to_datetime(row.get("Start Baggern"), utc=True)
-
+        
 
         # 🧩 Mittlere Gemischdichte für diesen Umlauf heraussuchen
         #mitteldichte = df_mittelwerte[df_mittelwerte["Umlauf"] == row["Umlauf"]]["Mittlere_Gemischdichte"]
         #mitteldichte = mitteldichte.iloc[0] if not mitteldichte.empty else None
+
 
         # 🧩 Ortsdichte aus df_manuell holen (manuelle Eingabe)
         ortsdichte = None
@@ -158,7 +161,7 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             if not treffer.empty:
                 feststoff_manuell = treffer.iloc[0].get("feststoff")
                 proz = treffer.iloc[0].get("proz_wert")
-                ortsdichte = treffer.iloc[0].get("ortsdichte")
+                ortsdichte = treffer.iloc[0].get("Ortsdichte")
 
         try:
             # Kontext: Zeitraum rund um den Umlauf
@@ -190,6 +193,12 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
 
             if feststoff_volumen is not None:
                 kumuliert_feststoff += feststoff_volumen
+                
+            abrechnungsvolumen = tds.get("abrechnungsvolumen")
+            if abrechnungsvolumen is not None:
+                kumuliert_abrechnung += abrechnungsvolumen
+
+                
 
             # 📋 Darstellungstabelle (mit Einheiten + Formatierung)
             zeile = [
@@ -205,6 +214,9 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(tds.get("feststoffkonzentration") * 100, 1) + " %" if tds.get("feststoffkonzentration") is not None else "-",
                 format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
+                format_de(tds.get("abrechnungsfaktor"), 3) if tds.get("abrechnungsfaktor") is not None else "-",
+                format_de(tds.get("abrechnungsvolumen"), 0) + " m³" if tds.get("abrechnungsvolumen") is not None else "-",
+                format_de(kumuliert_abrechnung, 0) + " m³" if kumuliert_abrechnung else "-",
                 format_de(feststoff_manuell, 0) + " m³" if feststoff_manuell else "-",
                 format_de(gemisch, 0) + " m³" if gemisch else "-",
                 format_de(proz, 1) + " %" if proz else "-",
@@ -232,6 +244,9 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
             tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
             tds.get("feststoffvolumen"),
             tds.get("feststoffmasse"),
+            tds.get("abrechnungsfaktor"),
+            tds.get("abrechnungsvolumen"),
+            kumuliert_abrechnung,
             feststoff_manuell,
             gemisch,
             proz,
@@ -255,6 +270,9 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Feststoff", "Konzentr."),
         ("Feststoff", "Volumen"),
         ("Feststoff", "Masse"),
+        ("Abrechnung", "Faktor"),
+        ("Abrechnung", "Volumen"),
+        ("Abrechnung", "kumuliert"),
         ("Ladung", "Feststoff"),
         ("Gemisch", ""),
         ("Zentrifuge", ""),
