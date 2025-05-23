@@ -6,4 +6,3 @@ plotly
 shapely
 pyproj
 openpyxl
-math
