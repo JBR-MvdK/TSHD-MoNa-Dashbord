@@ -171,8 +171,16 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     # ------------------------------------------------------------
     # 📍 Aktive Polygone extrahieren (für Info-Ausgabe)
     # ------------------------------------------------------------
-    bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
-    verbring_namen = df_umlauf[df_umlauf["Status"].isin([4, 5, 6])]["Polygon_Name"].dropna().unique()
+    if "Polygon_Name" in df_umlauf.columns and "Status" in df_umlauf.columns:
+        bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
+    else:
+        bagger_namen = []
+
+    if "Polygon_Name" in df_umlauf.columns and "Status" in df_umlauf.columns:
+        verbring_namen = df_umlauf[df_umlauf["Status"].isin([4, 5, 6])]["Polygon_Name"].dropna().unique()
+    else:
+        verbring_namen = []
+
 
     # ------------------------------------------------------------
     # 🔍 Start-/Endwerte nach gewählter Strategie ermitteln

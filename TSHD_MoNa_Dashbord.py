@@ -5,7 +5,9 @@ import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern,
 import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
+import io
 from datetime import datetime, timedelta
+
   # Verarbeitung und Formatierung von Zeitstempeln
 
 # === 📊 UI & VISUALISIERUNG ===
@@ -84,7 +86,9 @@ from modul_hilfsfunktionen import (
     pruefe_werte_gegen_schiffsparameter,  # Überprüfung der Rohdaten auf Plausibilität anhand Schiffsdaten
     setze_schiff_manuell_wenn_notwendig,  # Ermöglicht manuelle Auswahl des Schiffs, falls automatischer Abgleich fehlschlägt
     split_by_gap,                     # Segmentierung der Daten bei zeitlichen Lücken
-    to_dezimalstunden, to_dezimalminuten, to_hhmmss  # Zeitformatkonvertierung in verschiedene Darstellungen
+    to_dezimalstunden, to_dezimalminuten, to_hhmmss, # Zeitformatkonvertierung in verschiedene Darstellungen
+    initialisiere_polygon_werte,
+    make_polygon_cache_key  
 )
 
 # === 🪟 STREAMLIT UI-PANELS (visuelle Komponenten für Status, Kennzahlen, Strecken etc.) ===
@@ -147,7 +151,14 @@ from modul_dichtepolygon import weise_dichtepolygonwerte_zu  # Weist Dichteparam
 
 
 # 📁 Einlesen von Polygonen aus ASCII-Definitionstabellen (z. B. *.txt)
-from modul_dichte_polygon_ascii import parse_dichte_polygone  # Liest Polygonpunkte + Dichtewerte aus Textdateien (inkl. Koordinatentransformation)
+@st.cache_data
+def parse_dichte_polygone_cached(file_text, referenz_data, epsg_code):
+    from modul_dichte_polygon_ascii import parse_dichte_polygone
+    file_obj = io.StringIO(file_text)
+    return parse_dichte_polygone(file_obj, referenz_data, epsg_code)
+
+
+
 
 # 🗺️ Layersteuerung
 from modul_layersteuerung import zeige_layer_steuerung
@@ -220,7 +231,10 @@ with st.sidebar.expander("📈 Bonus-/Malussystem", expanded=False):
         if uploaded_dichtefile:
             try:
                 epsg_code = st.session_state.get("epsg_code", None)
-                dichte_polygone = parse_dichte_polygone(uploaded_dichtefile, referenz_data, epsg_code)
+                file_text = uploaded_dichtefile.getvalue().decode("utf-8")  # ← statt Bytes
+                dichte_polygone = parse_dichte_polygone_cached(file_text, referenz_data, epsg_code)
+
+
 
                 st.session_state["dichtefile"] = uploaded_dichtefile
                 st.session_state["dichte_polygone"] = dichte_polygone
@@ -797,8 +811,30 @@ if uploaded_files:
         # ➕ Weist jedem Punkt im DataFrame `df` einen Dichtewert aus den Polygonen zu
         #     → aber nur, wenn die Polygone vorher erfolgreich geladen wurden
         #     → betrifft z. B. Punkte mit Status "Baggern", die innerhalb eines Dichtepolygons liegen
-        if "dichte_polygone" in st.session_state:
-            df = weise_dichtepolygonwerte_zu(df, st.session_state["dichte_polygone"], epsg_code)
+
+        aktueller_key = make_polygon_cache_key(
+            df, baggerfelder, st.session_state.get("dichte_polygone"),
+            epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider
+        )
+        
+        if st.session_state.get("polygon_key") == aktueller_key and "df_mit_polygon" in st.session_state:
+            df = st.session_state["df_mit_polygon"]
+        else:
+            df = initialisiere_polygon_werte(
+                df,
+                baggerfelder=baggerfelder,
+                dichte_polygone=st.session_state.get("dichte_polygone"),
+                epsg_code=epsg_code,
+                seite=seite,
+                toleranz_oben=toleranz_oben,
+                toleranz_unten=toleranz_unten,
+                solltiefe_slider=solltiefe_slider
+            )
+            st.session_state["df_mit_polygon"] = df
+            st.session_state["polygon_key"] = aktueller_key
+
+
+
 
         
         # 🛠️ Debugging-Block (auskommentiert): zeigt Anzahl zugewiesener Dichtezonen und Details
@@ -871,9 +907,44 @@ if uploaded_files:
 # 🔵 Solltiefe auf Basis der Baggerfelder berechnen
 #==============================================================================================================================
 
-        df = berechne_solltiefe_fuer_df(
-            df, baggerfelder, seite, epsg_code, toleranz_oben, toleranz_unten, solltiefe_slider
-        )
+            # 📦 Smarter Caching-Mechanismus
+            aktueller_key = make_polygon_cache_key(
+                df, baggerfelder, st.session_state.get("dichte_polygone"),
+                epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider
+            )
+            
+            if st.session_state.get("polygon_key") == aktueller_key and "df_mit_polygon" in st.session_state:
+                df = st.session_state["df_mit_polygon"]
+            else:
+                df = initialisiere_polygon_werte(
+                    df,
+                    baggerfelder=baggerfelder,
+                    dichte_polygone=st.session_state.get("dichte_polygone"),
+                    epsg_code=epsg_code,
+                    seite=seite,
+                    toleranz_oben=toleranz_oben,
+                    toleranz_unten=toleranz_unten,
+                    solltiefe_slider=solltiefe_slider
+                )
+                st.session_state["df_mit_polygon"] = df
+                st.session_state["polygon_key"] = aktueller_key
+
+
+        
+        bagger_namen = []
+        verbring_namen = []
+        
+        # 🔐 Nur ausführen, wenn beide Spalten vorhanden sind
+        if "Polygon_Name" in df.columns and "Status_neu" in df.columns:
+            df_bagger = df[df["Status_neu"] == "Baggern"]
+            df_verbring = df[df["Status_neu"] == "Verbringen"]
+        
+            bagger_namen = sorted(df_bagger["Polygon_Name"].dropna().unique())
+            verbring_namen = sorted(df_verbring["Polygon_Name"].dropna().unique())
+
+
+
+
 
         # Solltiefe analysieren und Herkunft feststellen
         if "Solltiefe_Aktuell" in df.columns and df["Solltiefe_Aktuell"].notnull().any():
@@ -923,9 +994,43 @@ if uploaded_files:
 
         df_ungefiltert = df.copy()
 
-        
-        
+#==============================================================================================================================
+# 🔵 # Zentralisierte Berechnung nur bei Auswahl eines einzelnen Umlauf
+#==============================================================================================================================
+   
+    zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
     
+    if not zeile.empty:
+        row = zeile.iloc[0]
+    
+        # 🗺️ WICHTIG: Karte anzeigen UND gefiltertes df zurückholen
+        df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
+    
+        # 🧠 Strategie vorbereiten
+        if nutze_schiffstrategie:
+            strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+        else:
+            strategie = {
+                "Verdraengung": {"Start": None, "Ende": None},
+                "Ladungsvolumen": {"Start": None, "Ende": None}
+            }
+    
+        # ✅ Jetzt erst: zentrale Auswertung mit gefiltertem df
+        berechnungen = berechne_umlauf_auswertung(
+            df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+        )
+    
+        (
+            tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp,
+            debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung
+        ) = berechnungen
+    
+    else:
+        row = None
+        tds_werte = werte = kennzahlen = strecken = strecke_disp = dauer_disp = debug_info = []
+        bagger_namen = verbring_namen = []
+        amob_dauer = 0.0
+        dichtewerte = abrechnung = {}
 
 #==============================================================================================================================
 # 🔵 Tabs definieren
@@ -942,79 +1047,70 @@ if uploaded_files:
             "🧪 Debug",
             "💾 Export"
         ])
+        
       
 #==============================================================================================================================
 # Tab 1 - Übersichtskarten 
 #==============================================================================================================================
 
-        
-
         from pyproj import Transformer
-           
+        
         with tab1:
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 🌐 Karten-Transformer vorbereiten (für Plotly/Mapbox)
+            # --------------------------------------------------------------------------------------------------------------------------
             transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
-            
-            bagger_namen = sorted(df[df["Status_neu"] == "Baggern"]["Polygon_Name"].dropna().unique())
-            verbring_namen = sorted(df[df["Status_neu"] == "Verbringen"]["Polygon_Name"].dropna().unique())
-
+            zeit_suffix = "UTC" if zeitzone == "UTC" else "Lokal"
         
-            if umlauf_auswahl != "Alle":
-                zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 📌 Anzeige bei Auswahl eines einzelnen Umlaufs
+            # --------------------------------------------------------------------------------------------------------------------------
+            if umlauf_auswahl != "Alle" and row is not None:
+                # 🔍 Karte vorbereiten mit Info
+                df_karten, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
         
-                if not zeile.empty:
-                    row = zeile.iloc[0]
+                # 🕓 Zeitbasierte Polygon-Auswertung
+                bagger_df = berechne_punkte_und_zeit_cached(df, statuswert=2)
+                bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
         
-                    # 👇 Nur ein einziger Aufruf hier!
-                    df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
+                verbring_df = berechne_punkte_und_zeit_cached(df, statuswert=4)
+                verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
         
-                    # Kennzahlen, Strecken etc. berechnen
-                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung = berechne_umlauf_auswertung(
-                        df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-                    )
-                    
-                    
-                    # Berechnung der Zeiten aus Polygonauswertung
-                    bagger_df = berechne_punkte_und_zeit_cached(df, statuswert=2)
-                    bagger_zeiten = bagger_df["Zeit_Minuten"].to_dict()
-                    
-                    verbring_df = berechne_punkte_und_zeit_cached(df, statuswert=4)
-                    verbring_zeiten = verbring_df["Zeit_Minuten"].to_dict()
-                    
-                # --------------------------------------------------------------------------------------------------------------------
-                # 📌 Anzeige Bagger- und Verbringfelder in Panel-Stil
-                # --------------------------------------------------------------------------------------------------------------------                   
-                    
-                    zeige_bagger_und_verbringfelder(
-                        bagger_namen=bagger_namen,
-                        verbring_namen=verbring_namen,
-                        df=df,
-                        baggerfelder=baggerfelder  # ❗️wichtig!
-                    )
-            else:
-                # Anzeige für alle Daten
+                # 🧩 Bagger-/Verbring-Felder anzeigen
                 zeige_bagger_und_verbringfelder(
                     bagger_namen=bagger_namen,
                     verbring_namen=verbring_namen,
-                    df=df,  # Wichtig: kompletter DataFrame
+                    df=df,
                     baggerfelder=baggerfelder
                 )
-                                     
-  
-            # Kartenansicht vorbereiten
-            zeit_suffix = "UTC" if zeitzone == "UTC" else "Lokal"
-            col1, col2 = st.columns(2)
-  
-        # -------------------------------------------------------------------------------------------------------------------------
-        # Darstellung der Kartenansichten in zwei Spalten (links = Baggern, rechts = Verbringen)
-        # -------------------------------------------------------------------------------------------------------------------------
-        
-            # -------------------------------------------------------------------------------------------------------------------------
-            # Linke Karte: Darstellung der Baggerstelle (Status 2)
-            # -------------------------------------------------------------------------------------------------------------------------
-            with col1:
-                # Karte für Status 2 (Baggern) erstellen
+      
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 📌 Anzeige bei "Alle" – einfache Übersicht ohne Detailauswertung
+            # --------------------------------------------------------------------------------------------------------------------------
+            else:
+                bagger_namen = []
+                verbring_namen = []
+                if "Polygon_Name" in df.columns and "Status_neu" in df.columns:
+                    bagger_namen = sorted(df.loc[df["Status_neu"] == "Baggern", "Polygon_Name"].dropna().unique())
+                    verbring_namen = sorted(df.loc[df["Status_neu"] == "Verbringen", "Polygon_Name"].dropna().unique())
 
-                
+        
+                zeige_bagger_und_verbringfelder(
+                    bagger_namen=bagger_namen,
+                    verbring_namen=verbring_namen,
+                    df=df,
+                    baggerfelder=baggerfelder
+                )
+        
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 🗺️ Kartenansichten nebeneinander (links = Baggern, rechts = Verbringen)
+            # --------------------------------------------------------------------------------------------------------------------------
+            col1, col2 = st.columns(2)
+        
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 🟦 Linke Karte: Status 2 – Baggerstelle
+            # --------------------------------------------------------------------------------------------------------------------------
+            with col1:
                 fig, df_status2, df_456 = plot_karte(
                     df=df,
                     transformer=transformer,
@@ -1031,38 +1127,24 @@ if uploaded_files:
                     show_status3=show_status3_b,
                     show_status456=show_status456_b
                 )
-
-
-                # Wenn Status 2-Daten vorhanden sind → Zoome auf den ersten Punkt
-
+        
                 if show_status2_b and not df_status2.empty:
                     map_center, zoom = berechne_map_center_zoom(df_status2, transformer)
-                    fig.update_layout(
-                        mapbox_center=map_center,
-                        mapbox_zoom=zoom
-                    )
-
+                    fig.update_layout(mapbox_center=map_center, mapbox_zoom=zoom)
                 elif show_status2_b:
                     st.info("Keine Daten mit Status 2 verfügbar.")
-
-
-            
-                # Überschrift und Karte darstellen
-                #st.markdown("#### Baggerstelle")
+        
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_baggerstelle")
-
-            
-            
-            # -------------------------------------------------------------------------------------------------------------------------
-            # Rechte Karte: Darstellung der Verbringstelle (Status 4, 5, 6)
-            # -------------------------------------------------------------------------------------------------------------------------
+        
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 🟥 Rechte Karte: Status 4/5/6 – Verbringstelle
+            # --------------------------------------------------------------------------------------------------------------------------
             with col2:
-                # Karte für Status 4/5/6 (Verbringen) erstellen
                 fig, df_status2, df_456 = plot_karte(
                     df=df,
                     transformer=transformer,
                     seite=seite,
-                    status2_label="Status 2 (Verbringen)",  # oder ein passenderer Labeltext für diese Karte
+                    status2_label="Status 2 (Verbringen)",
                     tiefe_spalte="Abs_Tiefe_Kopf_BB" if seite in ["BB", "BB+SB"] else "Abs_Tiefe_Kopf_SB",
                     mapbox_center={"lat": 53.5, "lon": 8.2},
                     zeitzone=zeitzone,
@@ -1073,32 +1155,20 @@ if uploaded_files:
                     show_status3=show_status3_v,
                     show_status456=show_status456_v
                 )
-                # Wenn Status 4/5/6-Daten vorhanden sind → Zoome auf den ersten Punkt
-
+        
                 if show_status456_v and not df_456.empty:
                     map_center, zoom = berechne_map_center_zoom(df_456, transformer)
-                    fig.update_layout(
-                        mapbox_center=map_center,
-                        mapbox_zoom=zoom
-                    )
-
+                    fig.update_layout(mapbox_center=map_center, mapbox_zoom=zoom)
                 elif show_status456_v:
                     st.info("Keine Daten mit Status 4, 5 oder 6 verfügbar.")
-
-
-            
-                # Überschrift und Karte darstellen
-                #st.markdown("#### Verbringstelle")
+        
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_verbringstelle")
-
-
-                
-            # ----------------------------------------------------------------------------------------------------------------------
-            # 📍 Streckenanzeige pro Umlauf
-            # ----------------------------------------------------------------------------------------------------------------------
-            
-            if kennzahlen: 
-                st.markdown("#### Strecken im Umlauf")               
+        
+            # --------------------------------------------------------------------------------------------------------------------------
+            # 📏 Streckenanzeige (sofern Kennzahlen vorhanden)
+            # --------------------------------------------------------------------------------------------------------------------------
+            if kennzahlen:
+                st.markdown("#### Strecken im Umlauf")
                 zeige_strecken_panels(
                     strecke_disp["leerfahrt"], strecke_disp["baggern"], strecke_disp["vollfahrt"],
                     strecke_disp["verbringen"], strecke_disp["gesamt"],
@@ -1106,39 +1176,16 @@ if uploaded_files:
                     dauer_disp["verbringen"], dauer_disp["umlauf"],
                     strecken_panel_template
                 )
-            
-
 
 #==============================================================================================================================
 # Tab 2 - Diagramm Prozessdaten
 #==============================================================================================================================
-
         
         with tab2:
             st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
         
-            if umlauf_auswahl != "Alle":
-                # Hole die Zeile zum gewählten Umlauf
-                row_df = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl]
-        
-                if not row_df.empty:
-                    row = row_df.iloc[0]
-        
-                    # Hole Strategie und führe Auswertung durch
-                    
-                    if nutze_schiffstrategie:
-                        strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-                    else:
-                        strategie = {
-                            "Verdraengung": {"Start": None, "Ende": None},
-                            "Ladungsvolumen": {"Start": None, "Ende": None}
-                        }
+            if umlauf_auswahl != "Alle" and row is not None and tds_werte is not None:
 
-                    tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung = berechne_umlauf_auswertung(
-                        df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-                    )
-
-        
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
                 # ----------------------------------------------------------------------------------------------------------------------
@@ -1159,8 +1206,6 @@ if uploaded_files:
                 # ----------------------------------------------------------------------------------------------------------------------
                     zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
 
-                else:
-                    st.warning("⚠️ Kein Datensatz zum gewählten Umlauf gefunden.")
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
@@ -1182,11 +1227,7 @@ if uploaded_files:
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
                 
-                
-                
-                
-
-#==============================================================================================================================
+ #==============================================================================================================================
 # Tab 4 - Umlauftabelle - gesamt 
 #==============================================================================================================================
 
@@ -1593,24 +1634,10 @@ if uploaded_files:
 # ======================================================================================================================
 # TAB 6 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
 # ======================================================================================================================
+
         
         with tab6:
-
-            if umlauf_auswahl != "Alle":
-                row = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl].iloc[0]
-                
-                if nutze_schiffstrategie:
-                    strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
-                else:
-                    strategie = {
-                        "Verdraengung": {"Start": None, "Ende": None},
-                        "Ladungsvolumen": {"Start": None, "Ende": None}
-                    }
-
-                tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp, debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung = berechne_umlauf_auswertung(
-                    df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-                )
-
+            if umlauf_auswahl != "Alle" and row is not None:
 
                 # ----------------------------------------------------------------------------------------------------------------------
                 # 📌 Anzeige Bagger- und Verbringfelder in Panel-Stil

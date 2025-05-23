@@ -7,7 +7,11 @@ import pandas as pd               # Datenanalyse (DataFrames etc.)
 import pytz                      # Zeitzonenbehandlung
 import os, json                  # Dateizugriff & JSON-Parsing
 import streamlit as st           # UI-Komponenten in der Streamlit-App
+import hashlib
 
+
+from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
+from modul_dichtepolygon import weise_dichtepolygonwerte_zu
 # --------------------------------------------------------------------------------------------------
 # 📋 DataFrame-Hilfsfunktionen
 # --------------------------------------------------------------------------------------------------
@@ -360,4 +364,47 @@ def erkenne_schiff_aus_dateiname(uploaded_files):
     return None
 
         
-    
+def initialisiere_polygon_werte(
+    df, baggerfelder=None, dichte_polygone=None,
+    epsg_code=None, seite="BB", toleranz_oben=0.1,
+    toleranz_unten=0.1, solltiefe_slider=None
+):
+    """
+    Weist dem DataFrame einmalig Dichte- und Solltiefenwerte zu, wenn nicht bereits erfolgt.
+    """
+    if df.attrs.get("polygone_angereichert"):
+        return df  # Kein erneuter Durchlauf nötig
+
+    if dichte_polygone:
+        df = weise_dichtepolygonwerte_zu(df, dichte_polygone, epsg_code)
+
+    if baggerfelder:
+        df = berechne_solltiefe_fuer_df(df, baggerfelder, seite, epsg_code, toleranz_oben, toleranz_unten, solltiefe_slider)
+
+    df.attrs["polygone_angereichert"] = True
+    return df
+
+
+
+def make_polygon_cache_key(df, baggerfelder, dichte_polygone, epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider):
+    """
+    Erzeugt einen eindeutigen Schlüssel zur Wiederverwendung der polygon-angereicherten Daten.
+    Nutzt Hash über Geokoordinaten + Einstellungen.
+    """
+    try:
+        df_hash = pd.util.hash_pandas_object(df[["RW_Schiff", "HW_Schiff"]], index=False).sum()
+    except Exception:
+        df_hash = 0
+
+    key_data = (
+        int(df_hash),
+        str(baggerfelder),
+        str(dichte_polygone),
+        epsg_code,
+        seite,
+        toleranz_oben,
+        toleranz_unten,
+        solltiefe_slider
+    )
+    return hashlib.md5(str(key_data).encode()).hexdigest()
+   
