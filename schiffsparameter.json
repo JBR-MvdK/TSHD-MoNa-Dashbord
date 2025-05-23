@@ -199,12 +199,12 @@
     "Baggerseite": "BB",
     "StartEndStrategie": {
       "Verdraengung": {
-        "Start": "ein_davor_1_2",
+        "Start": "min_vor_1_2_oder_min5",
         "Ende": "vor_letztem_max_in_1min_nach_2_3"
       },
       "Ladungsvolumen": {
-        "Start": "ein_davor_1_2",
-        "Ende": "max_in_2min_um_2_3"
+        "Start": "min_vor_1_2_oder_min5",
+        "Ende": "vor_max_in_2min_um_2_3"
       }
     }
   },

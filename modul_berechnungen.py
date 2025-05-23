@@ -142,8 +142,8 @@ def berechne_amob_dauer(df, seite="BB"):
     return df_filtered[amob_col].sum()
 
 
-  
 def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
+
     """
     Vollständige Auswertung eines Umlaufs:
     - Filtert Daten auf den Zeitbereich des Umlaufs
@@ -254,6 +254,31 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
         "Ortsspezifisch": None,
         "Mindichte": None
     }
+
+
+    # 🧩 Falls HPA-Methode aktiv, versuche aus den Polygon-Daten zu lesen
+    if st.session_state.get("bonus_methode") == "hpa":
+        polygone = st.session_state.get("dichte_polygone", [])
+        df_baggern = df_umlauf[df_umlauf["Status_neu"] == "Baggern"]
+    
+        if not df_baggern.empty and "Dichte_Polygon_Name" in df_baggern.columns:
+            haeufigster_polygon = df_baggern["Dichte_Polygon_Name"].mode(dropna=True)
+            polygon_name = haeufigster_polygon.iloc[0] if not haeufigster_polygon.empty else None
+    
+            if polygon_name:
+                passendes = next((p for p in polygone if p.get("name") == polygon_name), None)
+                if passendes:
+                    dichtewerte = {
+                        "Dichte_Polygon_Name": polygon_name,
+                        "Ortsdichte": passendes.get("ortsdichte"),
+                        "Ortsspezifisch": passendes.get("ortspezifisch"),
+                        "Mindichte": passendes.get("mindichte"),
+                        "Maxdichte": passendes.get("maxdichte")
+                    }
+
+
+
+
 
     df_baggern = df_umlauf[df_umlauf[status_col] == "Baggern"]
     if not df_baggern.empty:

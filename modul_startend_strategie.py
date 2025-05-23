@@ -254,6 +254,53 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         return val, ts
 
 
+    def strategie_min_vor_1_2_oder_5min_min(df, ts_ref, col, zeit_col, debug_info, label):
+        """
+        Ermittelt den niedrigeren von:
+        - dem Wert direkt vor dem Statuswechsel ts_ref
+        - dem minimalen Wert in den ersten 5 Minuten von Status_neu == Baggern
+        """
+        val1, ts1 = None, None
+        val2, ts2 = None, None
+    
+        # 1️⃣ Wert direkt vor dem Statuswechsel
+        if ts_ref:
+            df_davor = df[df[zeit_col] < ts_ref]
+            if not df_davor.empty and col in df_davor.columns:
+                val1 = df_davor[col].iloc[-1]
+                ts1 = df_davor[zeit_col].iloc[-1]
+                debug_info.append(f"🟦 {label}: Wert direkt vor 1→2 = {val1:.3f} @ {ts1}")
+    
+        # 2️⃣ Min-Wert in den ersten 5 Minuten mit Status_neu == Baggern
+        df_bagg = df[(df["Status_neu"] == "Baggern") & (df[zeit_col] >= ts_ref)]
+        if not df_bagg.empty:
+            zeit_ende = ts_ref + pd.Timedelta("5min")
+            df_bagg_5min = df_bagg[df_bagg[zeit_col] <= zeit_ende]
+            if not df_bagg_5min.empty and col in df_bagg_5min.columns:
+                val2 = df_bagg_5min[col].min()
+                ts2 = df_bagg_5min[df_bagg_5min[col] == val2][zeit_col].iloc[0]
+                debug_info.append(f"🟨 {label}: Min-Wert in Baggern (5min) = {val2:.3f} @ {ts2}")
+    
+        # 3️⃣ Vergleich
+        if val1 is not None and val2 is not None:
+            if val1 < val2:
+                debug_info.append(f"✅ {label}: Direkter Wert davor ist kleiner → {val1:.3f}")
+                return val1, ts1
+            else:
+                debug_info.append(f"✅ {label}: Min-Wert in Baggern ist kleiner → {val2:.3f}")
+                return val2, ts2
+        elif val1 is not None:
+            return val1, ts1
+        elif val2 is not None:
+            return val2, ts2
+    
+        debug_info.append(f"⚠️ {label}: Keine geeigneten Daten für Vergleich.")
+        return None, None
+
+
+
+
+
 
     # ------------------------------------------------------------------------------------------------------------------
     # 🟦 Verdrängung Start
@@ -270,7 +317,12 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         ts = sub.loc[ts_idx, zeit_col] if ts_idx in sub.index else None
         debug_info.append("✅ Verdraengung Start: direkt nach 456→1")
     elif strat == "ein_davor_1_2":
-        wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Verdraengung", zeit_col, debug_info, "Verdrängung Start")
+        wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Verdraengung", zeit_col, debug_info, "Verdraengung Start")
+    elif strat == "min_vor_1_2_oder_min5":
+        wert, ts = strategie_min_vor_1_2_oder_5min_min(df, statuszeit_1_2, "Verdraengung", zeit_col, debug_info, "Verdraengung Start")
+    
+        
+        
     else:
         wert, ts = standardwert(df, statuszeit_1_2, "Verdraengung", "Verdraengung Start")
     result["Verdraengung Start"] = wert
@@ -289,8 +341,13 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
 
     elif strat == "vor_letztem_max_in_1min_nach_2_3":
         wert, ts = strategie_wert_vor_letztem_max_nach(df, statuszeit_2_3, "1min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
+
+    elif strat == "vor_max_in_2min_um_2_3":
+        wert, ts = strategie_wert_vor_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Verdraengung", zeit_col, debug_info, "Verdraengung Ende")
+
         
         
+    
     else:
         wert, ts = standardwert(df, statuszeit_2_3, "Verdraengung", "Verdraengung Ende")
     result["Verdraengung Ende"] = wert
@@ -315,6 +372,8 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         debug_info.append("✅ Ladungsvolumen Start: erster Wert im Umlauf")
     elif strat == "ein_davor_1_2":
         wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
+    elif strat == "min_vor_1_2_oder_min5":
+        wert, ts = strategie_min_vor_1_2_oder_5min_min(df, statuszeit_1_2, "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
     elif strat == "null":
         wert, ts = 0.0, None
         debug_info.append("✅ Ladungsvolumen Start: null (0.0 m³)")
@@ -336,6 +395,12 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         debug_info.append("✅ Ladungsvolumen Ende: erster Wert ≥ 2min nach 2→3")
     elif strat == "max_in_2min_um_2_3":
         wert, ts = strategie_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Ende")
+        
+    elif strat == "vor_max_in_2min_um_2_3":
+        wert, ts = strategie_wert_vor_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Ende")
+
+        
+    
     else:
         wert, ts = standardwert(df, statuszeit_2_3, "Ladungsvolumen", "Ladungsvolumen Ende")
     result["Ladungsvolumen Ende"] = wert
@@ -355,14 +420,17 @@ STRATEGIE_REGISTRY = {
         "nach_456_auf_1": "Erster Wert nach 456→1",
         "erster_wert": "Erster Wert im Zyklus",
         "null": "Fester Wert: 0.0",
-        "ein_davor_1_2": "HPA - Wert direkt vor 1→2"
+        "ein_davor_1_2": "HPA - Wert direkt vor 1→2",
+        "min_vor_1_2_oder_min5":"HPA - Wert direkt vor 1→2 oder min. 5 Minuten"
     },
     "Ende": {
         "standard": "Standard (am Statuswechsel)",
         "max_in_1min_um_2_3": "Maximalwert ±1 min um 2→3",
         "max_in_2min_um_2_3": "Maximalwert ±2 min um 2→3",
         "2min_nach_2_3": "Erster Wert ab 2 min nach 2→3",
-        "vor_letztem_max_in_1min_nach_2_3": "HPA - Wert vor letztem Maximum in 1 min nach 2→3"
+        "vor_letztem_max_in_1min_nach_2_3": "HPA - Wert vor letztem Maximum in 1 min nach 2→3",
+        "vor_max_in_2min_um_2_3": "Wert vor Maximum ±2 min um 2→3",
+
     }
 }
 

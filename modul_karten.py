@@ -1,17 +1,69 @@
 # ===============================================================================================================================
 # 🗺️ MODUL_KARTEN – Visualisierung von Fahrtdaten auf interaktiven Karten (Plotly Mapbox)
 # ===============================================================================================================================
-
+import math
 import pandas as pd
 import plotly.graph_objects as go
-from pyproj import Transformer
 import streamlit as st
+from pyproj import Transformer
+
 from modul_hilfsfunktionen import convert_timestamp, format_dauer, split_by_gap
+
+
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# 📍 Zoom und Mittelpunkt bestimmen
+# -------------------------------------------------------------------------------------------------------------------------------
+
+def berechne_map_center_zoom(
+    df, transformer, pixel_width=1000, pixel_height=600, min_zoom=7, max_zoom=16
+):
+    if df.empty:
+        return {"lat": 53.5, "lon": 8.2}, min_zoom
+
+    coords = df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
+    lons, lats = zip(*coords)
+
+    min_lat, max_lat = min(lats), max(lats)
+    min_lon, max_lon = min(lons), max(lons)
+
+    center = {"lat": (min_lat + max_lat) / 2, "lon": (min_lon + max_lon) / 2}
+    lat_range = max_lat - min_lat
+    lon_range = max_lon - min_lon
+    max_range = max(lat_range, lon_range)
+
+    # 🔧 Neue heuristische Zoom-Formel: sanft, realistisch
+    if max_range < 0.0005:
+        zoom = max_zoom
+    elif max_range < 0.005:
+        zoom = 14
+    elif max_range < 0.01:
+        zoom = 13.5
+    elif max_range < 0.03:
+        zoom = 13
+    elif max_range < 0.05:
+        zoom = 12.5
+    elif max_range < 0.1:
+        zoom = 12
+    elif max_range < 0.3:
+        zoom = 11
+    elif max_range < 0.5:
+        zoom = 10
+    else:
+        zoom = min_zoom
+
+    zoom = round(zoom, 2)
+
+
+    return center, zoom
+
+
 
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📍 plot_karte – Hauptfunktion zur Darstellung der Fahrtphasen (Status 1–6) auf einer Mapbox-Karte
 # -------------------------------------------------------------------------------------------------------------------------------
-def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None, dichte_polygone=None):
+def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None, dichte_polygone=None, show_status1=True, show_status2=True, show_status3=True, show_status456=True):
+
     """
     Visualisiert den Fahrtverlauf anhand des Status-Feldes auf einer interaktiven Karte.
     Unterstützt farblich unterscheidbare Statusphasen (1–6), Tooltip-Darstellung sowie optionale Polygone (Baggerfelder).
@@ -30,7 +82,9 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
     """
 
     fig = go.Figure()
-
+    df_status2 = pd.DataFrame()
+    df_456 = pd.DataFrame()
+    
     # Tooltip bei Status 2: Tiefenanzeige
     # in modul_karten.py – innerhalb von plot_karte(...)
     def tooltip_text(row):
@@ -62,86 +116,93 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
             tooltip += f"<br>🚤 Geschwindigkeit: {geschw:.1f} kn"
         return tooltip
 
+
     # -------- Status 1 – Leerfahrt (grau) --------
-    df_status1 = df[df["Status_neu"] == "Leerfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
-    df_status1 = split_by_gap(df_status1)
-    for seg_id, segment_df in df_status1.groupby("segment"):
-        coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
-        lons, lats = zip(*coords)
-        tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-        fig.add_trace(go.Scattermapbox(
-            lon=lons, lat=lats, mode='lines',
-            marker=dict(size=4, color='rgba(150, 150, 150, 0.7)'),
-            line=dict(width=1, color='rgba(150, 150, 150, 0.7)'),
-            text=tooltips, hoverinfo='text',
-            name='Status 1 (Leerfahrt)' if seg_id == 0 else None,
-            showlegend=(seg_id == 0), legendgroup="status1"
-        ))
+    if show_status1:
+        df_status1 = df[df["Status_neu"] == "Leerfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
+        df_status1 = split_by_gap(df_status1)
+        for seg_id, segment_df in df_status1.groupby("segment"):
+            coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
+            lons, lats = zip(*coords)
+            tooltips = segment_df.apply(tooltip_status1_3, axis=1)
+            fig.add_trace(go.Scattermapbox(
+                lon=lons, lat=lats, mode='lines',
+                marker=dict(size=4, color='rgba(150, 150, 150, 0.7)'),
+                line=dict(width=1, color='rgba(150, 150, 150, 0.7)'),
+                text=tooltips, hoverinfo='text',
+                name='Status 1 (Leerfahrt)' if seg_id == 0 else None,
+                showlegend=(seg_id == 0), legendgroup="status1"
+                #visible="legendonly"
+            ))
 
     # -------- Status 2 – Baggern (blau/grün, je nach Seite) --------
-    df_status2 = df[df["Status_neu"] == "Baggern"]
-    df_status2 = split_by_gap(df_status2)
-    for seg_id, segment_df in df_status2.groupby("segment"):
-        if seite in ["BB", "BB+SB"]:
-            df_bb = segment_df.dropna(subset=["RW_BB", "HW_BB"])
-            if not df_bb.empty:
-                lons, lats = zip(*df_bb.apply(lambda r: transformer.transform(r["RW_BB"], r["HW_BB"]), axis=1))
-                tooltips = df_bb.apply(tooltip_text, axis=1)
-                fig.add_trace(go.Scattermapbox(
-                    lon=lons, lat=lats, mode='lines+markers',
-                    marker=dict(size=6, color='rgba(0, 102, 204, 0.8)'),
-                    line=dict(width=2, color='rgba(0, 102, 204, 0.8)'),
-                    text=tooltips, hoverinfo='text',
-                    name="Status 2 (Baggern, BB)" if seg_id == 0 else None,
-                    showlegend=(seg_id == 0), legendgroup="status2bb"
-                ))
-        if seite in ["SB", "BB+SB"]:
-            df_sb = segment_df.dropna(subset=["RW_SB", "HW_SB"])
-            if not df_sb.empty:
-                lons, lats = zip(*df_sb.apply(lambda r: transformer.transform(r["RW_SB"], r["HW_SB"]), axis=1))
-                tooltips = df_sb.apply(tooltip_text, axis=1)
-                fig.add_trace(go.Scattermapbox(
-                    lon=lons, lat=lats, mode='lines+markers',
-                    marker=dict(size=6, color='rgba(0, 204, 102, 0.8)'),
-                    line=dict(width=2, color='rgba(0, 204, 102, 0.8)'),
-                    text=tooltips, hoverinfo='text',
-                    name="Status 2 (Baggern, SB)" if seg_id == 0 else None,
-                    showlegend=(seg_id == 0), legendgroup="status2sb"
-                ))
+    if show_status2:
+        df_status2 = df[df["Status_neu"] == "Baggern"]
+        df_status2 = split_by_gap(df_status2)
+        for seg_id, segment_df in df_status2.groupby("segment"):
+            if seite in ["BB", "BB+SB"]:
+                df_bb = segment_df.dropna(subset=["RW_BB", "HW_BB"])
+                if not df_bb.empty:
+                    lons, lats = zip(*df_bb.apply(lambda r: transformer.transform(r["RW_BB"], r["HW_BB"]), axis=1))
+                    tooltips = df_bb.apply(tooltip_text, axis=1)
+                    fig.add_trace(go.Scattermapbox(
+                        lon=lons, lat=lats, mode='lines+markers',
+                        marker=dict(size=6, color='rgba(0, 102, 204, 0.8)'),
+                        line=dict(width=2, color='rgba(0, 102, 204, 0.8)'),
+                        text=tooltips, hoverinfo='text',
+                        name="Status 2 (Baggern, BB)" if seg_id == 0 else None,
+                        showlegend=(seg_id == 0), legendgroup="status2bb"
+                    ))
+            if seite in ["SB", "BB+SB"]:
+                df_sb = segment_df.dropna(subset=["RW_SB", "HW_SB"])
+                if not df_sb.empty:
+                    lons, lats = zip(*df_sb.apply(lambda r: transformer.transform(r["RW_SB"], r["HW_SB"]), axis=1))
+                    tooltips = df_sb.apply(tooltip_text, axis=1)
+                    fig.add_trace(go.Scattermapbox(
+                        lon=lons, lat=lats, mode='lines+markers',
+                        marker=dict(size=6, color='rgba(0, 204, 102, 0.8)'),
+                        line=dict(width=2, color='rgba(0, 204, 102, 0.8)'),
+                        text=tooltips, hoverinfo='text',
+                        name="Status 2 (Baggern, SB)" if seg_id == 0 else None,
+                        showlegend=(seg_id == 0), legendgroup="status2sb"
+                    ))
 
     # -------- Status 3 – Vollfahrt (grün) --------
-    df_status3 = df[df["Status_neu"] == "Vollfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
-    df_status3 = split_by_gap(df_status3)
-
-    for seg_id, segment_df in df_status3.groupby("segment"):
-        coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
-        lons, lats = zip(*coords)
-        tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-        fig.add_trace(go.Scattermapbox(
-            lon=lons, lat=lats, mode='lines',
-            marker=dict(size=5, color='rgba(0, 153, 76, 0.8)'),
-            line=dict(width=1, color='rgba(0, 153, 76, 0.8)'),
-            text=tooltips, hoverinfo='text',
-            name='Status 3 (Vollfahrt)' if seg_id == 0 else None,
-            showlegend=(seg_id == 0), legendgroup="status3"
-        ))
+    if show_status3:
+        df_status3 = df[df["Status_neu"] == "Vollfahrt"].dropna(subset=["RW_Schiff", "HW_Schiff"])
+        df_status3 = split_by_gap(df_status3)
+    
+        for seg_id, segment_df in df_status3.groupby("segment"):
+            coords = segment_df.apply(lambda row: transformer.transform(row["RW_Schiff"], row["HW_Schiff"]), axis=1)
+            lons, lats = zip(*coords)
+            tooltips = segment_df.apply(tooltip_status1_3, axis=1)
+            fig.add_trace(go.Scattermapbox(
+                lon=lons, lat=lats, mode='lines',
+                marker=dict(size=5, color='rgba(0, 153, 76, 0.8)'),
+                line=dict(width=1, color='rgba(0, 153, 76, 0.8)'),
+                text=tooltips, hoverinfo='text',
+                name='Status 3 (Vollfahrt)' if seg_id == 0 else None,
+                showlegend=(seg_id == 0), legendgroup="status3"
+                #visible="legendonly"
+            ))
 
     # -------- Status 4/5/6 – Verbringen (orange) --------
-    df_456 = df[df["Status_neu"] == "Verbringen"].dropna(subset=["RW_Schiff", "HW_Schiff"])
-    df_456 = split_by_gap(df_456)
-
+    if show_status456:
+        df_456 = df[df["Status_neu"] == "Verbringen"].dropna(subset=["RW_Schiff", "HW_Schiff"])
+        df_456 = split_by_gap(df_456)
     
-    for seg_id, segment_df in df_456.groupby("segment"):
-        lons, lats = zip(*segment_df.apply(lambda r: transformer.transform(r["RW_Schiff"], r["HW_Schiff"]), axis=1))
-        tooltips = segment_df.apply(tooltip_status1_3, axis=1)
-        fig.add_trace(go.Scattermapbox(
-            lon=lons, lat=lats, mode='lines+markers',
-            marker=dict(size=6, color='rgba(255, 140, 0, 0.8)'),
-            line=dict(width=2, color='rgba(255, 140, 0, 0.8)'),
-            text=tooltips, hoverinfo='text',
-            name="Status 4/5/6 (Verbringen)" if seg_id == 0 else None,
-            showlegend=(seg_id == 0), legendgroup="status456"
-        ))
+        
+        for seg_id, segment_df in df_456.groupby("segment"):
+            lons, lats = zip(*segment_df.apply(lambda r: transformer.transform(r["RW_Schiff"], r["HW_Schiff"]), axis=1))
+            tooltips = segment_df.apply(tooltip_status1_3, axis=1)
+            fig.add_trace(go.Scattermapbox(
+                lon=lons, lat=lats, mode='lines+markers',
+                marker=dict(size=6, color='rgba(255, 140, 0, 0.8)'),
+                line=dict(width=2, color='rgba(255, 140, 0, 0.8)'),
+                text=tooltips, hoverinfo='text',
+                name="Status 4/5/6 (Verbringen)" if seg_id == 0 else None,
+                showlegend=(seg_id == 0), legendgroup="status456"
+            ))
 
     # -------- Optional: Baggerfelder (Polygon-Umrisse) --------
     if baggerfelder:

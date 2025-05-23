@@ -266,18 +266,24 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
                 x = plot_x(seg, [True] * len(seg), zeitzone)
                 if y.empty or pd.isna(y.max()):
                     continue
+                seitenkuerzel = s[-2:]
+                suffix = f" ({seitenkuerzel})" if seitenkuerzel in ["BB", "SB"] else ""
+                hover_label = f"{label}{suffix}"
+                legend_name = hover_label if seg_id == 0 else None
+                
                 fig2.add_trace(go.Scatter(
                     x=x,
                     y=y,
                     mode="lines",
-                    name=f"{label} ({s[-2:]})" if seg_id == 0 else None,
+                    name=legend_name,
                     customdata=pd.DataFrame({"original": y}),
-                    hovertemplate=f"{label} ({s[-2:]}): %{{customdata[0]:.2f}}<extra></extra>",
+                    hovertemplate=f"{hover_label}: %{{customdata[0]:.2f}}<extra></extra>",
                     line=dict(color=farbe, width=k.get("width", 2), dash=k.get("dash", None)),
                     visible=True,
                     connectgaps=False,
                     showlegend=(seg_id == 0),
                 ))
+
 
     # 📏 Y-Achsenbereich automatisch skalieren basierend auf Messdaten
     tiefe_col = get_spaltenname("Abs_Tiefe_Kopf_", seite)
