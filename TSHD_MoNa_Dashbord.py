@@ -673,7 +673,8 @@ if uploaded_files:
 #============================================================================================
 # 🔵 Filterleiste und Grundeinstellungen
 #============================================================================================
-
+        
+        
         # ------------------------------------------------------------------------------------------------
         # 🔢 1. Vier Spalten nebeneinander: Startwert, Umlaufauswahl, Zeitformat, Zeitzone
         # ------------------------------------------------------------------------------------------------
@@ -706,6 +707,8 @@ if uploaded_files:
         # 📊 Ergänze df um Status_neu-Spalte: Kennzeichnet z. B. 'Leerfahrt', 'Baggern' ...
         df = berechne_status_neu_cached(df, umlauf_info_df)
 
+
+
         # ------------------------------------------------------------------------------------------------
         # 📅 3. Ergänze Spalten für spätere Visualisierungen (Start-/Endzeit als eigene Spalten)
         # ------------------------------------------------------------------------------------------------
@@ -716,13 +719,31 @@ if uploaded_files:
                 umlauf_info_df["ende"] = umlauf_info_df["Ende"]
         
         
+       
         # ------------------------------------------------------------------------------------------------
         # 🔁 4. Auswahlbox: Welcher einzelne Umlauf soll betrachtet werden?
         # ------------------------------------------------------------------------------------------------
+        
+        # 💡 Session-Reset für Umlaufauswahl, wenn Tab "TDS-Tabellen" aktiv ist
+        if (
+            "tab_auswahl" in st.session_state and 
+            st.session_state["tab_auswahl"] == "TDS-Tabellen" and 
+            st.session_state.get("umlauf_auswahl") != "Alle"
+        ):
+            del st.session_state["umlauf_auswahl"]
+        
         with col_umlauf:
             umlauf_options = ["Alle"]
             if not umlauf_info_df.empty and "Umlauf" in umlauf_info_df.columns:
                 umlauf_options += [int(u) for u in umlauf_info_df["Umlauf"]]
+        
+            # ✅ Wenn Tab "Prozessdaten", "Tiefenprofil" oder "Debug" aktiv ist UND Auswahl auf "Alle" steht → auf ersten Umlauf setzen
+            if (
+                st.session_state.get("tab_auswahl") in ["Prozessdaten", "Tiefenprofil", "Debug"] and
+                st.session_state.get("umlauf_auswahl") == "Alle" and
+                len(umlauf_options) > 1
+            ):
+                st.session_state["umlauf_auswahl"] = umlauf_options[1]  # Index 1 = erster echter Umlauf (nach "Alle")
         
             # 🧠 Wenn Session-Flag aktiv ist, setze Auswahl automatisch auf "Alle"
             if st.session_state.get("bereit_fuer_berechnung", False):
@@ -739,7 +760,7 @@ if uploaded_files:
                 index=selected_index,
                 key="umlauf_auswahl"
             )
-        
+
         
         # ------------------------------------------------------------------------------------------------
         # ⏱️ 5. Formatierung für Zeitwerte: klassisch oder dezimal
@@ -1279,6 +1300,12 @@ if uploaded_files:
         
         # 🧠 Ausgewählten Tab für die nachfolgende Logik zugänglich machen
         selected_tab = st.session_state["tab_auswahl"]
+        
+        
+
+
+
+
 
 # ============================================================================================
 # Tab 1 - Übersichtskarten
@@ -1415,7 +1442,7 @@ if uploaded_files:
 #============================================================================================
         
         elif selected_tab == "Prozessdaten":
-            st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
+            st.markdown("#### Umlaufgrafik – Prozessdaten")
         
             if umlauf_auswahl != "Alle" and row is not None and tds_werte is not None:
 
@@ -1500,7 +1527,7 @@ if uploaded_files:
         # Dieser Tab dient der Anzeige, manuellen Ergänzung und Berechnung von TDS-Kennzahlen je Umlauf
         elif selected_tab == "TDS-Tabellen":
 
-            st.markdown("#### 💠 TDS Berechnung pro Umlauf")
+            st.markdown("#### TDS Berechnung pro Umlauf")
         
             # 🛑 Sicherheitsprüfung: Sind manuelle Feststoffdaten vorhanden?
             if "df_manuell" not in st.session_state or st.session_state["df_manuell"].empty:
