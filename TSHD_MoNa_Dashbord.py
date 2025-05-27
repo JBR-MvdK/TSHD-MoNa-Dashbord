@@ -1,23 +1,23 @@
 # === 🔧 BASIS-MODULE (Standardbibliothek & Basisdatenverarbeitung) ===
-import json            # Verarbeitung von JSON-Dateien (z. B. Laden von Konfigurationsdaten oder Schiffseinstellungen)
-import os              # Datei- und Verzeichnisoperationen (z. B. Pfadprüfungen, Dateiexistenz etc.)
-import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern, Gruppieren, Zeitreihen)
-import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
-import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
-import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
-import io              # Pufferobjekte und Dateioperationen im Speicher
-from datetime import datetime, timedelta  # Verarbeitung und Formatierung von Zeitstempeln
+import json            # JSON: Laden/Speichern von z. B. Konfigurationen oder Schiffsparametern
+import os              # OS: Arbeiten mit Pfaden und Dateisystem
+import pandas as pd    # Pandas: DataFrame-Verarbeitung, Zeitreihen, Filtern, Gruppieren
+import numpy as np     # NumPy: numerische Berechnungen, Arrays, NaN-Handling
+import pytz            # Zeitzonen-Verarbeitung (z. B. UTC → Lokalzeit)
+import traceback       # Fehler-Stacktrace zur Analyse bei Exceptions
+import io              # Speicherpuffer für Dateioperationen (z. B. Excel-Export)
+from datetime import datetime, timedelta  # Zeitverarbeitung (z. B. Timestamps, Zeiträume)
 
 # === 📊 UI & VISUALISIERUNG ===
-import plotly.graph_objects as go    # Interaktive Diagramme (z. B. für Zeitverläufe, Tiefenprofile)
-import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
+import plotly.graph_objects as go    # Plotly: interaktive Charts (Mapbox, Linien, Marker etc.)
+import streamlit as st               # Streamlit: Webinterface für Dashboards und Datenanalyse
 
 # === 🌍 GEODATEN & GEOMETRIE ===
-from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinatenberechnungen (z. B. Punkt-in-Polygon)
+from shapely.geometry import Point   # Punktobjekte für Geometrieberechnungen (z. B. Punkt-in-Polygon)
 
-# === 🧩 EIGENE MODULE (Modularisierte Funktionsbausteine für einzelne Analyseschritte) ===
+# === 🧩 EIGENE MODULE – Modularisierte Funktionen (domain-spezifisch) ===
 
-# 🟡 Import- & TDS-Berechnung (Rohdaten → Volumen, Masse, Konzentration)
+# 🟡 Import & Feststoffberechnung (ASCII → MoNa-Datenstruktur + TDS-Werte)
 from modul_tshd_hpa_import import konvertiere_hpa_ascii
 @st.cache_data
 def konvertiere_hpa_ascii_cached(files): return konvertiere_hpa_ascii(files)
@@ -26,7 +26,7 @@ from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 @st.cache_data
 def parse_mona_cached(files): return parse_mona(files)
 
-# 🟦 Statusbasierte Umlauf-Logik (Leerfahrt, Baggern, etc.)
+# 🟦 Statusbasierte Umläufe (Leerfahrt, Baggern, Vollfahrt, Verbringen)
 from modul_umlaeufe import nummeriere_umlaeufe, berechne_status_neu, mappe_umlaufnummer
 @st.cache_data
 def extrahiere_umlauf_startzeiten_cached(*args, **kwargs):
@@ -38,181 +38,200 @@ def berechne_status_neu_cached(df, umlauf_info_df):
     from modul_umlaeufe import berechne_status_neu
     return berechne_status_neu(df, umlauf_info_df)
 
-# ⚓ Baggerseite automatisch erkennen (BB / SB)
+# ⚓ Automatische Erkennung der aktiven Baggerseite (BB/SB)
 from modul_baggerseite import erkenne_baggerseite
 
-# 🌐 EPSG-Code automatisch ermitteln (für Georeferenzierung)
+# 🌐 EPSG-Erkennung (automatisiert aus UTM-Koordinaten)
 from modul_koordinatenerkennung import erkenne_koordinatensystem
 
-# 📥 XML-Import von Baggerfeldgrenzen
+# 📥 Baggerfeld-Import aus XML (inkl. Polygon, Solltiefe etc.)
 from modul_baggerfelder_xml_import import parse_baggerfelder
 @st.cache_data
 def parse_baggerfelder_cached(xml_file, epsg_code):
     from modul_baggerfelder_xml_import import parse_baggerfelder
     return parse_baggerfelder(xml_file, epsg_code)
 
-# 📏 Berechnung der Solltiefe entlang der Fahrtspur
+# 📏 Berechnung der Solltiefe je Position auf Basis der Felder
 from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 
-# 🚢 Streckenanalyse je Betriebsstatus (Leerfahrt, Baggern, Verklappen ...)
+# 🚢 Streckenberechnung je Statusphase
 from modul_strecken import berechne_strecken
 
-# 📊 Umlaufkennzahlen berechnen (z. B. Menge, Masse, Dichte, Dauer)
+# 📊 Kennzahlen je Umlauf (Mengen, Dichte, Dauer etc.)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
-# 🎯 Start-/Endwertstrategie (z. B. aus Volumen oder Verdrängung)
+# 🎯 Start-/Endstrategien zur Bestimmung von Volumen/Masse-Bereichen
 from modul_startend_strategie import berechne_start_endwerte, STRATEGIE_REGISTRY
 
-# 🧰 Hilfsfunktionen für Formatierung, Konvertierung, Prüfung
+# 🧰 Hilfsfunktionen (Allzweck: Konvertierung, Formatierung, Validierung, Zeit etc.)
 from modul_hilfsfunktionen import (
-    convert_timestamp,                # Timestamps konvertieren inkl. Zeitzone
-    erkenne_datenformat,              # Datenformat automatisch erkennen (MoNa, HPA)
-    erkenne_schiff_aus_dateiname,     # Schiffsname aus Dateinamen extrahieren
-    format_dauer, sichere_dauer, sichere_zeit,  # Zeitformate sicher darstellen
-    format_de, format_time,           # Formatierung von Zahlen und Zeitwerten
-    get_spaltenname,                  # Zugriff auf BB/SB-Spaltennamen
-    lade_schiffsparameter,            # Schiffsparameter aus JSON laden
-    plot_x,                           # Zeitachse für Plotly generieren
-    pruefe_werte_gegen_schiffsparameter,  # Wertevalidierung gegen Schiffsdaten
-    setze_schiff_manuell_wenn_notwendig,  # Schiff manuell auswählen
-    split_by_gap,                     # Datengaps erkennen und segmentieren
-    to_dezimalstunden, to_dezimalminuten, to_hhmmss,  # Zeitformat-Konvertierung
-    initialisiere_polygon_werte,      # Einmalige Anreicherung mit Polygonattributen
-    make_polygon_cache_key            # Erzeugung eindeutiger Schlüssel für Caching
+    convert_timestamp, erkenne_datenformat, erkenne_schiff_aus_dateiname,
+    format_dauer, sichere_dauer, sichere_zeit,
+    format_de, format_time, get_spaltenname,
+    lade_schiffsparameter, plot_x, pruefe_werte_gegen_schiffsparameter,
+    setze_schiff_manuell_wenn_notwendig, split_by_gap,
+    to_dezimalstunden, to_dezimalminuten, to_hhmmss,
+    initialisiere_polygon_werte, make_polygon_cache_key
 )
 
-# === 🪟 UI-Komponenten für Panels (Kennzahlen, Strecken etc.) ===
+# 🪟 Panels für Statuszeiten, Kennzahlen, Strecken, TDS ...
 from modul_ui_panels import (
-    feld_panel_template,
-    panel_template,
-    status_panel_template_mit_strecke,
-    strecken_panel_template,
-    dichte_panel_template,
-    panel_template_dauer,
-    zeige_bagger_und_verbringfelder,
-    zeige_baggerwerte_panels,
-    zeige_statuszeiten_panels,
-    zeige_statuszeiten_panels_mit_strecke,
-    zeige_strecken_panels,
-    zeige_bonus_abrechnung_panels,
+    feld_panel_template, panel_template, status_panel_template_mit_strecke,
+    strecken_panel_template, dichte_panel_template, panel_template_dauer,
+    zeige_bagger_und_verbringfelder, zeige_baggerwerte_panels,
+    zeige_statuszeiten_panels, zeige_statuszeiten_panels_mit_strecke,
+    zeige_strecken_panels, zeige_bonus_abrechnung_panels,
     zeige_aufsummierte_dauer_panels
 )
 
-# === 📈 Zeitreihengrafiken: Tiefe & Prozessdaten
+# 📈 Tiefe & Prozessverläufe als Zeitreihen
 from modul_prozessgrafik import zeige_baggerkopftiefe_grafik, zeige_prozessgrafik_tab
 
-# 🔄 Polygon-Auswertung: Aufenthaltsdauer je Status
+# 🔄 Aufenthaltsdauer je Status & Polygon
 from modul_polygon_auswertung import berechne_punkte_und_zeit
 @st.cache_data
 def berechne_punkte_und_zeit_cached(df, statuswert):
     return berechne_punkte_und_zeit(df, statuswert)
 
-# 🧮 Zentrale Auswertung eines Umlaufs
+# 🧮 Komplette Auswertung eines Umlaufs (Zentrallogik)
 from modul_berechnungen import berechne_umlauf_auswertung
 
-# 🗂️ Tabellen mit Umlaufzeiten, TDS, Verbringung
+# 🗂️ Tabellen für Umläufe, TDS, Verbringen (Export & UI)
 from modul_umlauftabelle import (
-    berechne_gesamtzeiten,
-    erzeuge_tds_tabelle,
-    erzeuge_verbring_tabelle,
-    erstelle_umlauftabelle,
+    berechne_gesamtzeiten, erzeuge_tds_tabelle,
+    erzeuge_verbring_tabelle, erstelle_umlauftabelle,
     show_gesamtzeiten_dynamisch
 )
 @st.cache_data
 def erzeuge_umlauftabelle_cached(umlauf_info_df, zeitzone, zeitformat):
     return erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat)
 
-# 🗺️ Kartenansichten und Zentrum/Zoom berechnen
+# 🗺️ Karte rendern & Mittelpunkt berechnen
 from modul_karten import plot_karte, zeige_umlauf_info_karte, berechne_map_center_zoom
 
-# 📥 Excel-Import für manuelle Feststoffdaten
+# 📥 Excel-Import (z. B. manuelle Feststoffwerte von Schiff)
 from modul_daten_import import lade_excel_feststoffdaten
 @st.cache_data
 def lade_excel_feststoffdaten_cached(file):
     from modul_daten_import import lade_excel_feststoffdaten
     return lade_excel_feststoffdaten(file)
 
-# 📌 Dichtepolygone zuweisen (Schnittpunktprüfung)
+# 📌 Zuweisung der Dichtepolygon-Werte je Position
 from modul_dichtepolygon import weise_dichtepolygonwerte_zu
 
-# 📁 ASCII-Import von Dichtepolygon-Definitionen
+# 📁 Import ASCII-Definitionen für Dichtepolygone (Backup-Format)
 @st.cache_data
 def parse_dichte_polygone_cached(file_text, referenz_data, epsg_code):
     from modul_dichte_polygon_ascii import parse_dichte_polygone
     file_obj = io.StringIO(file_text)
     return parse_dichte_polygone(file_obj, referenz_data, epsg_code)
 
-# 🗺️ Steuerung der Kartenelemente (Layer)
+# 🗺️ Steuerung welche Layer auf der Karte dargestellt werden
 from modul_layersteuerung import zeige_layer_steuerung
 
+# ⚙️ Manuelle Feststoffdateneingabe (und Zusammenführung mit Berechnung)
 from modul_tds_manager import initialisiere_manuell_df, merge_manuelle_daten
 
+# 🧭 Navigation mit Icons (horizontales Menü in der Kopfzeile)
+from streamlit_option_menu import option_menu   # UI-Komponente für benutzerfreundliche Tab-Navigation
 
-from streamlit_option_menu import option_menu
-#============================================================================================
-# 🔵 Start der Streamlit App
-#============================================================================================
+# 🎯 Registry für dynamische Auswahl von Start-/Endwertstrategien (z. B. Standard, Maximum, Mittelwert)
+from modul_startend_strategie import STRATEGIE_REGISTRY
 
-# Streamlit Seiteneinstellungen (Titel und Layout)
-st.set_page_config(page_title="TSHD Monitoring – Baggerdatenanalyse", layout="wide")
+# 🌐 Geokoordinaten-Transformation (z. B. UTM → WGS84) für Kartendarstellung
+from pyproj import Transformer
+
+# ============================================================================================
+# 🔵 Start der Streamlit App – Grundeinstellungen und Layout
+# ============================================================================================
+
+# 🌐 Setzt grundlegende Layoutparameter der Streamlit-App
+st.set_page_config(
+    page_title="TSHD Monitoring – Baggerdatenanalyse",  # Titel im Browser-Tab
+    layout="wide"  # Breites Layout für mehr Platz bei Diagrammen & Tabellen
+)
+
+# 🏷️ Haupttitel der Anwendung (oben im Interface)
 st.title("🚢 TSHD Monitoring – Baggerdatenanalyse")
+
+# 🧭 Titel in der Sidebar
 st.sidebar.title("⚙️ Datenimport | Einstellungen")
 
 
 # ============================================================================================
-# 🔵 Datei-Upload mit automatischer Format-Erkennung
+# 🔵 Datei-Upload – Auswahl und automatisches Format-Erkennung (MoNa oder HPA)
 # ============================================================================================
 
+# 📦 Eingabemaske zum Hochladen von Baggerdatendateien (.txt)
 with st.sidebar.expander("📂 Baggerdaten hochladen / auswählen", expanded=True):
     uploaded_files = st.file_uploader(
-        "Datendateien (.txt) auswählen", 
-        type=["txt"], 
-        accept_multiple_files=True,
-        key="daten_upload"
+        "Datendateien (.txt) auswählen",           # Benutzerhinweis
+        type=["txt"],                              # Nur Textdateien zulassen
+        accept_multiple_files=True,                # Mehrfach-Upload erlauben
+        key="daten_upload"                         # Eindeutiger Schlüssel für Streamlit-Session
     )
 
+    # ⏳ Platzhalter für dynamischen Upload-Status (z. B. "Erfolgreich geladen", Fehlermeldung etc.)
     upload_status = st.empty()
 
-    datenformat = None  # Initialisierung
+    datenformat = None  # 🧮 Initiale Variable zur Erkennung des Datenformats
 
     if uploaded_files:
+        # 🔍 Versuche das Format automatisch zu erkennen (z. B. anhand von Spaltenüberschriften)
         datenformat = erkenne_datenformat(uploaded_files)
 
+        # ✅ Erfolgreich erkanntes Format anzeigen
         if datenformat in ["MoNa", "HPA"]:
             st.info(f"📄 Erkanntes Datenformat: **{datenformat}**")
         else:
+            # ⚠️ Warnung und manuelle Auswahl anbieten, wenn Format nicht erkannt werden konnte
             st.warning("❓ Format konnte nicht eindeutig erkannt werden.")
-            #datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
+            # datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
 
 
 # ============================================================================================
-# 🔵 Datei-Upload für Bagger- und Verbringstellenpolygone
+# 🔵 Datei-Upload für Bagger- und Verbringstellenpolygone sowie manuelle Solltiefenwahl
 # ============================================================================================
+
+# 🌍 Sidebar-Bereich für geographische Informationen & Tiefenvorgaben
 with st.sidebar.expander("🗺️ Polygone- und Solltiefen", expanded=False):
 
+    # 📂 Upload für XML-Dateien, die Bagger- oder Verbringgrenzen enthalten
     uploaded_xml_files = st.file_uploader(
-        "Baggerfeldgrenzen (XML)", 
-        type=["xml"], 
-        accept_multiple_files=True,
-        key="xml_upload"
+        "Baggerfeldgrenzen (XML)",      # Hinweistext für den Nutzer
+        type=["xml"],                   # Nur XML zulassen
+        accept_multiple_files=True,     # Mehrere Dateien möglich
+        key="xml_upload"                # Session-sicherer Key
     )
     
+    # ℹ️ Platzhalter für Rückmeldung zu geladenen XML-Dateien (z. B. Erfolg / Fehler)
     xml_status = st.empty()
 
-# --- Solltiefen-Setup ---
+    # 🔧 Visuelle Trennung
     st.markdown("---")
-    
+
+    # 📏 Eingabe der Solltiefe über Zahleneingabefeld
+    # ➡️ wird verwendet, wenn keine gültige Tiefe aus der XML importiert werden kann
     solltiefe_slider = st.number_input(
         "**Solltiefe (m)** \n_Nur falls keine XML mit gültiger Tiefe geladen wird_", 
-        min_value=-30.0, max_value=0.0, 
-        value=0.0, step=0.1, format="%.2f"
+        min_value=-30.0, max_value=0.0,     # Typische Tiefenbereiche in m (negativ zur Referenzfläche)
+        value=0.0, step=0.1, format="%.2f"  # Startwert: 0.00 m
     )
+
+    # 🔼 Eingabe der oberen Toleranz zur Solltiefe (z. B. akzeptierte Überbaggerung)
     toleranz_oben = st.slider(
-        "Obere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
+        "Obere Toleranz (m)", 
+        min_value=0.0, max_value=2.0, 
+        value=0.5, step=0.1
     )
+
+    # 🔽 Eingabe der unteren Toleranz zur Solltiefe (z. B. akzeptierte Unterbaggerung)
     toleranz_unten = st.slider(
-        "Untere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
+        "Untere Toleranz (m)", 
+        min_value=0.0, max_value=2.0, 
+        value=0.5, step=0.1
     )
+
 # ============================================================================================
 # 🔵 Bonus-/Malussystem (Trennung von Berechnungsmethode und Importmethode)
 # ============================================================================================
@@ -472,10 +491,6 @@ if uploaded_files:
                 df, st=st, status_element=koordsys_status
             )
 
-
-
-
-            
 #============================================================================================
 # 🔵 # 📋 Time-Slider
 #============================================================================================        
@@ -598,7 +613,7 @@ if uploaded_files:
                     )
         
                     # 🧭 Strategien
-                    from modul_startend_strategie import STRATEGIE_REGISTRY
+
                     st.markdown("#### ⚙️ Start-/Endwert-Strategien")
         
                     startend_parameter = ["Verdraengung", "Ladungsvolumen"]
@@ -1233,7 +1248,7 @@ if uploaded_files:
 #     ➤ Voraussetzung für Mapbox-Darstellungen mit Längen-/Breitengraden
 # ============================================================================================
         
-        from pyproj import Transformer
+
         if epsg_code:
             transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
         else:

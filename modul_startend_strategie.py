@@ -192,8 +192,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
 
     def strategie_wert_vor_letztem_max_nach(df, ts_ref, nach, col, zeit_col, debug_info, label):
         """
-        Sucht den letzten Maximalwert im Bereich [ts_ref, ts_ref + nach] und gibt den Wert davor zurück.
-        Wenn der Maximalwert am Anfang liegt, wird der vorherige Punkt aus dem Gesamt-DF geholt.
+        Sucht den letzten Maximalwert im Bereich [ts_ref, ts_ref + nach] und gibt den *numerisch unterschiedlichen* Wert davor zurück.
         """
         if ts_ref is None:
             debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
@@ -217,18 +216,23 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
     
         # Finde Position im Gesamt-DF
         df_indices = df.index.tolist()
-        pos_im_df = df_indices.index(letzter_extrem_idx)
-    
-        if pos_im_df == 0:
-            debug_info.append(f"⚠️ {label}: Max liegt ganz am Anfang der Daten – kein vorheriger Punkt vorhanden.")
+        try:
+            pos_im_df = df_indices.index(letzter_extrem_idx)
+        except ValueError:
+            debug_info.append(f"⚠️ {label}: Letzter Max-Index nicht im Gesamt-DF.")
             return None, None
     
-        vor_idx = df_indices[pos_im_df - 1]
-        ts = df.loc[vor_idx, zeit_col]
-        val = df.loc[vor_idx, col]
+        # Suche numerisch ungleichen Wert davor
+        for i in range(pos_im_df - 1, -1, -1):
+            val_davor = df.loc[df_indices[i], col]
+            if pd.notna(val_davor) and val_davor != extrem_val:
+                ts = df.loc[df_indices[i], zeit_col]
+                debug_info.append(f"✅ {label}: Wert vor letztem Max (≠ Max) = {val_davor:.3f} @ {ts}")
+                return val_davor, ts
     
-        debug_info.append(f"✅ {label}: Wert vor letztem Max im Bereich [2→3, +{nach}]")
-        return val, ts
+        debug_info.append(f"⚠️ {label}: Kein numerisch unterschiedlicher Wert vor letztem Maximum gefunden.")
+        return None, None
+
 
 
 
