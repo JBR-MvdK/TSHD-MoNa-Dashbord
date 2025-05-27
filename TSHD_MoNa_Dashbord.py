@@ -182,7 +182,8 @@ with st.sidebar.expander("📂 Baggerdaten hochladen / auswählen", expanded=Tru
             st.info(f"📄 Erkanntes Datenformat: **{datenformat}**")
         else:
             st.warning("❓ Format konnte nicht eindeutig erkannt werden.")
-            datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
+            #datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
+
 
 # ============================================================================================
 # 🔵 Datei-Upload für Bagger- und Verbringstellenpolygone
@@ -428,18 +429,17 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
         help="Wenn aktiviert, werden gespeicherte Strategien aus der Schiffsparameterdatei übernommen."
     )
 
-
-
-
-
 # Platzhalter für Erkennungsinfo Koordinatensystem
 koordsys_status = st.sidebar.empty()
-
-
 
 #============================================================================================
 # 🔵 MoNa-Daten verarbeiten und vorbereiten
 #============================================================================================
+if uploaded_files and datenformat not in ["MoNa", "HPA"]:
+    st.warning("⚠️ Fehlerhafte Datei – bitte überprüfe Format und Inhalt.")
+    st.stop()  # sofortiger Abbruch bei falschem Format
+
+# ✅ Nur wenn gültiges Format, wird dieser Teil erreicht:
 if uploaded_files:
     try:
         if datenformat == "MoNa":
@@ -450,13 +450,13 @@ if uploaded_files:
             df, rw_max, hw_max = parse_mona_cached(hpa_files)
 
     except Exception as e:
-        st.error(f"Fehler beim Laden der Daten: {e}")
-        st.text(traceback.format_exc())
+        st.error("Fehler beim Laden der Daten:")
+        st.exception(e)
 
     else:
         # ✅ Dieser Block wird nur ausgeführt, wenn KEIN Fehler aufgetreten ist
-        # Erfolgsmeldung anzeigen
         upload_status.success(f"{len(df)} Zeilen aus {len(uploaded_files)} Datei(en) geladen")
+
 
         # TDS-Parameter berechnen
         df = berechne_tds_parameter(df, pf, pw)
