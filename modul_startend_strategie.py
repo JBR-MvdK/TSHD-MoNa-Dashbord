@@ -92,16 +92,19 @@ def suche_extrem_zweizeitfenster(df, zeitpunkt, vor, nach, col, art="max", zeit_
 # 🔍 Hauptfunktion: berechne_start_endwerte
 # ----------------------------------------------------------------------------------------------------------------------
 
-def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=None):
+
+def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=None, nutze_schiffstrategie=True, nutze_gemischdichte=True):
+
     """
     Wendet eine Strategie zur Bestimmung von Start- und Endwerten (Verdrängung, Volumen) an.
     Gibt zusätzlich Debug-Infos zurück.
     """
  
 
-    df = ersetze_status_neu(df)
-    if df_gesamt is not None:
-        df_gesamt = ersetze_status_neu(df_gesamt)
+    if nutze_schiffstrategie or nutze_gemischdichte:
+        df = ersetze_status_neu(df)
+        if df_gesamt is not None:
+            df_gesamt = ersetze_status_neu(df_gesamt)
 
 
 

@@ -64,7 +64,7 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
     ]
 
     kurven_haupt = [
-        {"spaltenname": "Status", "label": "Status", "farbe": "black", "sichtbar": False, "width": 1, "dash": "dot"},
+        {"spaltenname": "Status", "label": "Status", "farbe": "#666666", "sichtbar": True, "width": 1, "dash": "dot"},
         {"spaltenname": "Pegel", "label": "Pegel [m]", "farbe": "#3D5A80", "sichtbar": False, "width": 1, "dash": "solid"},
         {"spaltenname": "Geschwindigkeit", "label": "Geschwindigkeit [knt]", "farbe": "#186A3B", "sichtbar": False, "width": 1, "dash": "dash"},
         {"spaltenname": "Tiefgang_vorne", "label": "Tiefgang vorne [m]", "farbe": "#5B84B1", "sichtbar": False, "width": 1, "dash": "solid"},
@@ -151,22 +151,46 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
 
 
     # Strategielinien
-    # Strategielinien mit individuellem Linienstil
     strategie_linien = [
-        ("Verdraengung Start TS", "#A67C52", "dash"),
-        ("Verdraengung Ende TS", "#A67C52", "dash"),
-        ("Ladungsvolumen Start TS", "#8C8C8C", "dot"),
-        ("Ladungsvolumen Ende TS", "#8C8C8C", "dot")
+        ("Verdraengung Start TS", "#A67C52", "dash", "Verdrängung TS"),
+        ("Verdraengung Ende TS", "#A67C52", "dash", "Verdrängung TS"),
+        ("Ladungsvolumen Start TS", "#7D8CA3", "dot", "Ladungsvolumen TS"),
+        ("Ladungsvolumen Ende TS", "#7D8CA3", "dot", "Ladungsvolumen TS")
     ]
     
-    for key, color, dash in strategie_linien:
+    # Merker, welche Legendenlabels bereits erzeugt wurden
+    sichtbare_legenden = set()
+    
+    for key, color, dash, legend_label in strategie_linien:
         ts = werte.get(key)
         if ts is not None and pd.notnull(ts):
-            fig.add_vline(
-                x=convert_timestamp(ts, zeitzone),
+            ts_conv = convert_timestamp(ts, zeitzone)
+    
+            # 👉 Linie im Diagramm (über gesamte Höhe)
+            fig.add_shape(
+                type="line",
+                x0=ts_conv, x1=ts_conv,
+                y0=0, y1=1,
+                xref="x", yref="paper",
                 line=dict(color=color, width=2, dash=dash),
-                opacity=0.8
+                layer="above"
             )
+    
+            # 👉 Nur EIN Legenden-Eintrag je Typ
+            if legend_label not in sichtbare_legenden:
+                fig.add_trace(go.Scatter(
+                    x=[ts_conv],
+                    y=[None],
+                    mode="lines",
+                    name=legend_label,
+                    line=dict(color=color, width=2, dash=dash),
+                    hoverinfo="skip",
+                    showlegend=True
+                ))
+                sichtbare_legenden.add(legend_label)
+
+
+
 
 
     # Umlaufmarkierungen

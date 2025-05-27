@@ -344,7 +344,7 @@ def erkenne_schiff_aus_dateiname(uploaded_files):
     - Datei: "250418_utc_ijsseldelta.txt" → Schiff: "TSHD IJSSELDELTA"
 
     Rückgabe:
-    - Schiffname (str) oder None
+    - Schiffsname (str) oder None
     """
     dateiname = uploaded_files[0].name.lower()
     schiffe = {
@@ -356,14 +356,18 @@ def erkenne_schiff_aus_dateiname(uploaded_files):
         "aquadelta": "WID AQUADELTA",
         "ecodelta": "TSHD ECODELTA",
         "hein": "TSHD HEIN",
-        "pieter_hubert":"TSHD PIETER HUBERT"
+        "pieter_hubert": "TSHD PIETER HUBERT"
     }
     for key, name in schiffe.items():
         if key in dateiname:
             return name
     return None
 
-        
+
+# --------------------------------------------------------------------------------------------------
+# 🧩 Einmalige Anreicherung des DataFrames mit Polygoninformationen (Solltiefe & Dichte)
+# --------------------------------------------------------------------------------------------------
+
 def initialisiere_polygon_werte(
     df, baggerfelder=None, dichte_polygone=None,
     epsg_code=None, seite="BB", toleranz_oben=0.1,
@@ -371,11 +375,15 @@ def initialisiere_polygon_werte(
 ):
     """
     Weist dem DataFrame einmalig Dichte- und Solltiefenwerte zu, wenn nicht bereits erfolgt.
+
+    - Verhindert doppelte Berechnung über df.attrs["polygone_angereichert"]
+    - Führt nur dann polygonbasierte Berechnungen durch, wenn Felder vorhanden sind
     """
     if df.attrs.get("polygone_angereichert"):
         return df  # Kein erneuter Durchlauf nötig
 
-    if dichte_polygone:
+    # 👉 Nur dann ausführen, wenn gültige Geometrie-Polygone vorhanden sind
+    if dichte_polygone and any("polygon" in p for p in dichte_polygone):
         df = weise_dichtepolygonwerte_zu(df, dichte_polygone, epsg_code)
 
     if baggerfelder:
@@ -385,16 +393,22 @@ def initialisiere_polygon_werte(
     return df
 
 
+# --------------------------------------------------------------------------------------------------
+# 🔐 Caching-Schlüssel für Polygon-Zuweisung berechnen
+# --------------------------------------------------------------------------------------------------
 
 def make_polygon_cache_key(df, baggerfelder, dichte_polygone, epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider):
     """
-    Erzeugt einen eindeutigen Schlüssel zur Wiederverwendung der polygon-angereicherten Daten.
-    Nutzt Hash über Geokoordinaten + Einstellungen.
+    Erzeugt einen eindeutigen Hash-Schlüssel zur Wiederverwendung polygon-angereicherter Daten.
+    
+    - Nutzt Hash über Geokoordinaten + alle relevanten Einstellungen
+    - Verhindert unnötige Wiederholung von Polygonberechnungen bei identischen Inputs
     """
     try:
+        # Hash basiert auf RW/HW-Spalteninhalten (Positionsdaten)
         df_hash = pd.util.hash_pandas_object(df[["RW_Schiff", "HW_Schiff"]], index=False).sum()
     except Exception:
-        df_hash = 0
+        df_hash = 0  # Fallback bei Fehler (z. B. Spalten nicht vorhanden)
 
     key_data = (
         int(df_hash),
@@ -407,4 +421,3 @@ def make_polygon_cache_key(df, baggerfelder, dichte_polygone, epsg_code, seite, 
         solltiefe_slider
     )
     return hashlib.md5(str(key_data).encode()).hexdigest()
-   

@@ -5,36 +5,29 @@ import pandas as pd    # Tabellenverarbeitung und Datenanalyse (z. B. Filtern,
 import numpy as np     # Mathematische Funktionen (z. B. Mittelwerte, NaN-Erkennung, Array-Operationen)
 import pytz            # Zeitzonen-Verarbeitung und Konvertierung von Timestamps
 import traceback       # Lesbare Fehler-Stacks für Debugging und Fehleranalyse
-import io
-from datetime import datetime, timedelta
-
-  # Verarbeitung und Formatierung von Zeitstempeln
+import io              # Pufferobjekte und Dateioperationen im Speicher
+from datetime import datetime, timedelta  # Verarbeitung und Formatierung von Zeitstempeln
 
 # === 📊 UI & VISUALISIERUNG ===
 import plotly.graph_objects as go    # Interaktive Diagramme (z. B. für Zeitverläufe, Tiefenprofile)
 import streamlit as st               # Haupt-Framework zur Erstellung der interaktiven Web-Oberfläche
 
 # === 🌍 GEODATEN & GEOMETRIE ===
-from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinatenberechnungen, z. B. Punkt-in-Polygon
+from shapely.geometry import Point   # Geometrische Punkt-Objekte für Koordinatenberechnungen (z. B. Punkt-in-Polygon)
 
 # === 🧩 EIGENE MODULE (Modularisierte Funktionsbausteine für einzelne Analyseschritte) ===
 
-# 🟡 Import und Berechnung technischer TDS-Parameter (z. B. Volumen, Masse, Konzentration aus Rohdaten)
-from modul_tshd_hpa_import import konvertiere_hpa_ascii  # Konvertierung von HPA-Dateien in MoNa-Format
+# 🟡 Import- & TDS-Berechnung (Rohdaten → Volumen, Masse, Konzentration)
+from modul_tshd_hpa_import import konvertiere_hpa_ascii
 @st.cache_data
-def konvertiere_hpa_ascii_cached(files):
-    return konvertiere_hpa_ascii(files)
-
+def konvertiere_hpa_ascii_cached(files): return konvertiere_hpa_ascii(files)
 
 from modul_tshd_mona_import import parse_mona, berechne_tds_parameter
 @st.cache_data
-def parse_mona_cached(files):
-    return parse_mona(files)
+def parse_mona_cached(files): return parse_mona(files)
 
-
-# 🟦 Segmentierung der Fahrtdaten in einzelne Umläufe (Statuslogik, Phasenübergänge, Status_neu)
-from modul_umlaeufe import nummeriere_umlaeufe, berechne_status_neu
-
+# 🟦 Statusbasierte Umlauf-Logik (Leerfahrt, Baggern, etc.)
+from modul_umlaeufe import nummeriere_umlaeufe, berechne_status_neu, mappe_umlaufnummer
 @st.cache_data
 def extrahiere_umlauf_startzeiten_cached(*args, **kwargs):
     from modul_umlaeufe import extrahiere_umlauf_startzeiten
@@ -45,135 +38,132 @@ def berechne_status_neu_cached(df, umlauf_info_df):
     from modul_umlaeufe import berechne_status_neu
     return berechne_status_neu(df, umlauf_info_df)
 
-
-# ⚓ Erkennung der aktiven Baggerseite (automatische Analyse BB/SB auf Basis Sensoraktivität)
+# ⚓ Baggerseite automatisch erkennen (BB / SB)
 from modul_baggerseite import erkenne_baggerseite
 
-# 🌐 Automatische EPSG-Code-Erkennung (zur Georeferenzierung der Positionsdaten)
+# 🌐 EPSG-Code automatisch ermitteln (für Georeferenzierung)
 from modul_koordinatenerkennung import erkenne_koordinatensystem
 
-# 📥 XML-Import von Baggerfeld-Definitionen (Polygon-Grenzen und Solltiefen je Feld)
+# 📥 XML-Import von Baggerfeldgrenzen
 from modul_baggerfelder_xml_import import parse_baggerfelder
 @st.cache_data
 def parse_baggerfelder_cached(xml_file, epsg_code):
     from modul_baggerfelder_xml_import import parse_baggerfelder
     return parse_baggerfelder(xml_file, epsg_code)
 
-
-
-# 📏 Berechnung von Solltiefen entlang der Fahrtstrecke auf Basis der Baggerfeld-Zuordnung
+# 📏 Berechnung der Solltiefe entlang der Fahrtspur
 from modul_solltiefe_tshd import berechne_solltiefe_fuer_df
 
-# 🚢 Streckenberechnung nach Betriebsstatus (z. B. Strecke während Leerfahrt, Baggerfahrt etc.)
+# 🚢 Streckenanalyse je Betriebsstatus (Leerfahrt, Baggern, Verklappen ...)
 from modul_strecken import berechne_strecken
 
-# 📊 Berechnung von Kennzahlen pro Umlauf (z. B. Menge, Masse, Dauer, Dichtekennwerte)
+# 📊 Umlaufkennzahlen berechnen (z. B. Menge, Masse, Dichte, Dauer)
 from modul_umlauf_kennzahl import berechne_umlauf_kennzahlen
 
-# 🎯 Strategie zur Erkennung von Start-/Endzeitpunkten je Parameter (z. B. Ladungsvolumen, Verdrängung)
+# 🎯 Start-/Endwertstrategie (z. B. aus Volumen oder Verdrängung)
 from modul_startend_strategie import berechne_start_endwerte, STRATEGIE_REGISTRY
 
-# 🧰 Allgemeine Hilfsfunktionen (Zeitumrechnung, Datenprüfung, Spaltenwahl, Formatierung etc.)
+# 🧰 Hilfsfunktionen für Formatierung, Konvertierung, Prüfung
 from modul_hilfsfunktionen import (
-    convert_timestamp,                # Umwandlung von Timestamps inkl. Zeitzonenbehandlung
-    erkenne_datenformat,              # Erkennung des Dateiformats (z. B. MoNa oder HPA)
-    erkenne_schiff_aus_dateiname,     # Extraktion des Schiffnamens aus Dateinamen
-    format_dauer, sichere_dauer, sichere_zeit,  # Sichere Berechnung und Anzeige von Zeitdifferenzen
-    format_de, format_time,           # Formatierung von Zeit- und Zahlenwerten für Anzeige
-    get_spaltenname,                  # Dynamischer Zugriff auf BB/SB-Spaltennamen je nach Seite
-    lade_schiffsparameter,            # Laden der JSON-Schiffsparameterdatei
-    plot_x,                           # Erzeugung der Zeitachse für Plotly-Grafiken
-    pruefe_werte_gegen_schiffsparameter,  # Überprüfung der Rohdaten auf Plausibilität anhand Schiffsdaten
-    setze_schiff_manuell_wenn_notwendig,  # Ermöglicht manuelle Auswahl des Schiffs, falls automatischer Abgleich fehlschlägt
-    split_by_gap,                     # Segmentierung der Daten bei zeitlichen Lücken
-    to_dezimalstunden, to_dezimalminuten, to_hhmmss, # Zeitformatkonvertierung in verschiedene Darstellungen
-    initialisiere_polygon_werte,
-    make_polygon_cache_key  
+    convert_timestamp,                # Timestamps konvertieren inkl. Zeitzone
+    erkenne_datenformat,              # Datenformat automatisch erkennen (MoNa, HPA)
+    erkenne_schiff_aus_dateiname,     # Schiffsname aus Dateinamen extrahieren
+    format_dauer, sichere_dauer, sichere_zeit,  # Zeitformate sicher darstellen
+    format_de, format_time,           # Formatierung von Zahlen und Zeitwerten
+    get_spaltenname,                  # Zugriff auf BB/SB-Spaltennamen
+    lade_schiffsparameter,            # Schiffsparameter aus JSON laden
+    plot_x,                           # Zeitachse für Plotly generieren
+    pruefe_werte_gegen_schiffsparameter,  # Wertevalidierung gegen Schiffsdaten
+    setze_schiff_manuell_wenn_notwendig,  # Schiff manuell auswählen
+    split_by_gap,                     # Datengaps erkennen und segmentieren
+    to_dezimalstunden, to_dezimalminuten, to_hhmmss,  # Zeitformat-Konvertierung
+    initialisiere_polygon_werte,      # Einmalige Anreicherung mit Polygonattributen
+    make_polygon_cache_key            # Erzeugung eindeutiger Schlüssel für Caching
 )
 
-# === 🪟 STREAMLIT UI-PANELS (visuelle Komponenten für Status, Kennzahlen, Strecken etc.) ===
+# === 🪟 UI-Komponenten für Panels (Kennzahlen, Strecken etc.) ===
 from modul_ui_panels import (
     feld_panel_template,
     panel_template,
     status_panel_template_mit_strecke,
     strecken_panel_template,
     dichte_panel_template,
-    zeige_bagger_und_verbringfelder,   # Einfärbung von Bagger- und Verbringfeldern auf der Karte
-    zeige_baggerwerte_panels,          # Anzeigen von Baggerparametern wie Volumen, Masse, Dichte
-    zeige_statuszeiten_panels,         # Visualisierung der Phasenzeiten je Umlauf
-    zeige_statuszeiten_panels_mit_strecke,  # Erweiterte Darstellung inkl. zurückgelegter Strecken
+    panel_template_dauer,
+    zeige_bagger_und_verbringfelder,
+    zeige_baggerwerte_panels,
+    zeige_statuszeiten_panels,
+    zeige_statuszeiten_panels_mit_strecke,
     zeige_strecken_panels,
-    zeige_bonus_abrechnung_panels              # Anzeige der Strecken je Phase (Leerfahrt, Baggern, Vollfahrt, Verklappung)
+    zeige_bonus_abrechnung_panels,
+    zeige_aufsummierte_dauer_panels
 )
 
-# === 📈 Interaktive Zeitreihengrafiken zur Prozessdatendarstellung
+# === 📈 Zeitreihengrafiken: Tiefe & Prozessdaten
 from modul_prozessgrafik import zeige_baggerkopftiefe_grafik, zeige_prozessgrafik_tab
 
-# 🔄 Auswertung: Aufenthaltsdauer in Polygonen (z. B. je Baggerfeld)
+# 🔄 Polygon-Auswertung: Aufenthaltsdauer je Status
 from modul_polygon_auswertung import berechne_punkte_und_zeit
 @st.cache_data
 def berechne_punkte_und_zeit_cached(df, statuswert):
     return berechne_punkte_und_zeit(df, statuswert)
 
-
-# 🧮 Erweiterte Berechnung für TDS-/Betriebskennzahlen pro Umlauf
+# 🧮 Zentrale Auswertung eines Umlaufs
 from modul_berechnungen import berechne_umlauf_auswertung
 
-# 🗂️ Erzeugung der Tabellenansichten für Statuszeiten und TDS-Kennzahlen
+# 🗂️ Tabellen mit Umlaufzeiten, TDS, Verbringung
 from modul_umlauftabelle import (
-    berechne_gesamtzeiten,        # Aufsummieren der Phasen über alle Umläufe
-    erzeuge_tds_tabelle,          # Tabelle mit berechneten TDS-Werten pro Umlauf
-    erzeuge_verbring_tabelle,     # Verbringstellen je Umlauf + Export für WSA
-    erstelle_umlauftabelle,       # Erzeugung der Detailtabelle aller Umläufe
-    show_gesamtzeiten_dynamisch   # Gesamtdauer je Phase
+    berechne_gesamtzeiten,
+    erzeuge_tds_tabelle,
+    erzeuge_verbring_tabelle,
+    erstelle_umlauftabelle,
+    show_gesamtzeiten_dynamisch
 )
-
 @st.cache_data
 def erzeuge_umlauftabelle_cached(umlauf_info_df, zeitzone, zeitformat):
     return erstelle_umlauftabelle(umlauf_info_df, zeitzone, zeitformat)
 
-
-
-# 🗺️ Visualisierung der Fahrtspuren + Baggerfelder auf der Karte
+# 🗺️ Kartenansichten und Zentrum/Zoom berechnen
 from modul_karten import plot_karte, zeige_umlauf_info_karte, berechne_map_center_zoom
 
-# 📥 Tagesberichte aus Excel importieren (z. B. Feststoffmengen)
+# 📥 Excel-Import für manuelle Feststoffdaten
 from modul_daten_import import lade_excel_feststoffdaten
 @st.cache_data
 def lade_excel_feststoffdaten_cached(file):
     from modul_daten_import import lade_excel_feststoffdaten
     return lade_excel_feststoffdaten(file)
 
+# 📌 Dichtepolygone zuweisen (Schnittpunktprüfung)
+from modul_dichtepolygon import weise_dichtepolygonwerte_zu
 
-
-# 📌 Zuordnung der RW/HW-Position zu einem Dichtepolygon (Polygon-Schnittprüfung)
-from modul_dichtepolygon import weise_dichtepolygonwerte_zu  # Weist Dichteparameter einem Punkt im Polygon zu
-
-
-# 📁 Einlesen von Polygonen aus ASCII-Definitionstabellen (z. B. *.txt)
+# 📁 ASCII-Import von Dichtepolygon-Definitionen
 @st.cache_data
 def parse_dichte_polygone_cached(file_text, referenz_data, epsg_code):
     from modul_dichte_polygon_ascii import parse_dichte_polygone
     file_obj = io.StringIO(file_text)
     return parse_dichte_polygone(file_obj, referenz_data, epsg_code)
 
-
-
-
-# 🗺️ Layersteuerung
+# 🗺️ Steuerung der Kartenelemente (Layer)
 from modul_layersteuerung import zeige_layer_steuerung
 
+from modul_tds_manager import initialisiere_manuell_df, merge_manuelle_daten
 
-#==============================================================================================================================
+
+from streamlit_option_menu import option_menu
+#============================================================================================
 # 🔵 Start der Streamlit App
-#==============================================================================================================================
+#============================================================================================
 
 # Streamlit Seiteneinstellungen (Titel und Layout)
 st.set_page_config(page_title="TSHD Monitoring – Baggerdatenanalyse", layout="wide")
 st.title("🚢 TSHD Monitoring – Baggerdatenanalyse")
 st.sidebar.title("⚙️ Datenimport | Einstellungen")
-# === 📂 Datei-Upload mit automatischer Format-Erkennung ===
-with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):
+
+
+# ============================================================================================
+# 🔵 Datei-Upload mit automatischer Format-Erkennung
+# ============================================================================================
+
+with st.sidebar.expander("📂 Baggerdaten hochladen / auswählen", expanded=True):
     uploaded_files = st.file_uploader(
         "Datendateien (.txt) auswählen", 
         type=["txt"], 
@@ -194,6 +184,11 @@ with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):
             st.warning("❓ Format konnte nicht eindeutig erkannt werden.")
             datenformat = st.radio("🔄 Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
 
+# ============================================================================================
+# 🔵 Datei-Upload für Bagger- und Verbringstellenpolygone
+# ============================================================================================
+with st.sidebar.expander("🗺️ Polygone- und Solltiefen", expanded=False):
+
     uploaded_xml_files = st.file_uploader(
         "Baggerfeldgrenzen (XML)", 
         type=["xml"], 
@@ -203,79 +198,173 @@ with st.sidebar.expander("📂 Dateien hochladen / auswählen", expanded=True):
     
     xml_status = st.empty()
 
-# ==============================================================================================================================
-# 🔵 Bonus-/Malussystem (HPA- oder MoNa-basiert)
-# ==============================================================================================================================
+# --- Solltiefen-Setup ---
+    st.markdown("---")
+    
+    solltiefe_slider = st.number_input(
+        "**Solltiefe (m)** \n_Nur falls keine XML mit gültiger Tiefe geladen wird_", 
+        min_value=-30.0, max_value=0.0, 
+        value=0.0, step=0.1, format="%.2f"
+    )
+    toleranz_oben = st.slider(
+        "Obere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
+    )
+    toleranz_unten = st.slider(
+        "Untere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
+    )
+# ============================================================================================
+# 🔵 Bonus-/Malussystem (Trennung von Berechnungsmethode und Importmethode)
+# ============================================================================================
 
 with st.sidebar.expander("📈 Bonus-/Malussystem", expanded=False):
 
-    # Methode wählen: Automatische Datei (HPA) oder Manuell (MoNa)
-    methode = st.radio("Berechnungsmethode wählen:", ["Dichtepolygone (HPA)", "Liniare Interpolation (MoNa)"], horizontal=True)
+    # 1. Berechnungsmethode auswählen (wirkt sich auf spätere TDS-Abrechnung aus)
+    berechnungsmethode = st.radio("Berechnungsmethode wählen", ["HPA – Dichtepolygone", "MoNa – Lineare Interpolation"])
+    methode_code = "hpa" if "HPA" in berechnungsmethode else "mona"
+    st.session_state["bonus_methode"] = methode_code  # 🔧 Für spätere Berechnungen merken
 
-    # ----------------------------------------------
-    # Variante A: HPA – Datei-Upload und Verarbeitung
-    # ----------------------------------------------
-    if methode == "Dichtepolygone (HPA)":
-        uploaded_dichtefile = st.file_uploader("Dichtepunkte (ASCII, tab-getrennt):", type=["txt", "tsv"], key="dichtefile_upload")
-        uploaded_json_file = st.file_uploader("🔧 Optional: JSON mit Referenzwerten laden", type=["json"], key="dichte_ref_json")
+
+
+    # 2. Unabhängige Wahl der Importmethode für die Dichtewerte
+    import_methode = st.radio("Importmethode der Dichtewerte", ["Dichtepolygone (CSV)", "Manuelle Eingabe"])
+    st.session_state["bonus_importmethode"] = import_methode
+
+    dichte_daten = []  # Wird mit Polygon- oder manuellen Daten gefüllt
+
+    # ============================================================================================ 
+    # --- Variante: Dichtepolygone aus CSV + optionaler JSON-Referenz importieren ---
+    if import_methode == "Dichtepolygone (CSV)":
+        uploaded_dichtefile = st.file_uploader("📄 Dichtepolygone (CSV)", type=["csv", "txt", "tsv"])
+        uploaded_json_file = st.file_uploader("🔧 Optional: Referenzwerte (JSON)", type=["json"])
 
         referenz_data = None
         if uploaded_json_file:
             try:
                 referenz_data = json.load(uploaded_json_file)
-                st.session_state["referenz_json_file"] = uploaded_json_file
-                st.success("✅ JSON geladen und Daten zugewiesen.")
+                st.success("✅ JSON geladen.")
             except Exception as e:
                 st.warning(f"⚠️ Fehler beim JSON-Import: {e}")
 
+        # Wenn Dichte-Datei vorhanden ist
         if uploaded_dichtefile:
             try:
                 epsg_code = st.session_state.get("epsg_code", None)
-                file_text = uploaded_dichtefile.getvalue().decode("utf-8")  # ← statt Bytes
+                file_text = uploaded_dichtefile.getvalue().decode("utf-8")
+
+                # Parsen der Polygoninformationen
                 dichte_polygone = parse_dichte_polygone_cached(file_text, referenz_data, epsg_code)
-
-
-
-                st.session_state["dichtefile"] = uploaded_dichtefile
-                st.session_state["dichte_polygone"] = dichte_polygone
-                st.session_state["bonus_methode"] = "hpa"
-
                 st.success(f"✅ {len(dichte_polygone)} Dichtepolygone geladen.")
-                st.dataframe(pd.DataFrame([{
+
+                # In DataFrame für UI-Editor umwandeln
+                df_editor = pd.DataFrame([{
                     "Bereich": p["name"],
                     "Ortsdichte": p["ortsdichte"],
-                    "Ortsspezifisch": p["ortspezifisch"],
-                    "Min. Baggerdichte": p["mindichte"],
-                    "Max. Dichte": p.get("maxdichte", "-")
-                } for p in dichte_polygone]), use_container_width=True)
+                    "Ortsspezifisch": p.get("ortspezifisch", None),
+                    "Min. Baggerdichte": p.get("mindichte", None),
+                    "Max. Dichte": p.get("maxdichte", None)
+                } for p in dichte_polygone])
+
+                # ✏️ Formular zur Bearbeitung der Dichtewerte
+                with st.form("dichtepolygon_editor_form"):
+                    st.markdown("✏️ Bearbeite die Dichteparameter pro Polygon")
+                    df_edit = st.data_editor(
+                        df_editor,
+                        hide_index=True,
+                        use_container_width=True,
+                        column_config={
+                            "Ortsdichte": st.column_config.NumberColumn(format="%.3f"),
+                            "Ortsspezifisch": st.column_config.NumberColumn(format="%.3f"),
+                            "Min. Baggerdichte": st.column_config.NumberColumn(format="%.3f"),
+                            "Max. Dichte": st.column_config.NumberColumn(format="%.3f"),
+                        }
+                    )
+                    speichern = st.form_submit_button("💾 Änderungen übernehmen & speichern")
+
+                # 🔄 Übernahme der Änderungen ins Polygonobjekt
+                if speichern:
+                    for i, row in df_edit.iterrows():
+                        dichte_polygone[i].update({
+                            "ortsdichte": row["Ortsdichte"],
+                            "ortspezifisch": row["Ortsspezifisch"],
+                            "mindichte": row["Min. Baggerdichte"],
+                            "maxdichte": row["Max. Dichte"]
+                        })
+                    st.success("✅ Änderungen gespeichert.")
+
+                # Speichern in Session-State für spätere Berechnung
+                dichte_daten = dichte_polygone
+                st.session_state["dichte_polygone"] = dichte_polygone
+                st.session_state["bonus_dichtewerte"] = dichte_polygone
+
+                # ➕ Export als TXT-Datei
+                if dichte_polygone:
+                    export_lines = []
+                    for poly in dichte_polygone:
+                        name = poly.get("name", "")
+                        ortsdichte = poly.get("ortsdichte") or 0
+                        ortsspezifisch = poly.get("ortspezifisch") or 0
+                        mindichte = poly.get("mindichte") or 0
+                        maxdichte = poly.get("maxdichte") or 0
+                        coords = poly.get("punkte_original", [])
+                        for x, y in coords:
+                            line = f"{name}\t{float(x):.2f}\t{float(y):.2f}\t{float(ortsdichte):.2f}\t{float(ortsspezifisch):.2f}\t{float(mindichte):.2f}\t{float(maxdichte):.2f}"
+                            export_lines.append(line)
+
+                    export_text = "\n".join(export_lines)
+
+                    st.download_button(
+                        label="📥 Geänderte Dichtepolygone als TXT exportieren",
+                        data=export_text.encode("utf-8"),
+                        file_name="dichtepolygone_export.txt",
+                        mime="text/plain"
+                    )
 
             except Exception as e:
                 st.error(f"❌ Fehler beim Verarbeiten: {e}")
+                st.text(traceback.format_exc())   
 
-    # ----------------------------------------------
-    # Variante B: MoNa – manuelle Werteingabe
-    # ----------------------------------------------
-    elif methode == "Liniare Interpolation (MoNa)":
-        st.markdown("### Manuelle Eingabe für alle Umläufe")
-        ortsdichte = st.number_input("Ortsdichte (t/m³)", min_value=1.0, max_value=1.5, value=1.16, step=0.01, format="%.3f")
-        mindichte = st.number_input("Minimale Beladedichte (t/m³)", min_value=1.0, max_value=1.5, value=1.15, step=0.001, format="%.3f")        
-        maxdichte = st.number_input("Maximale Beladedichte (t/m³)", min_value=1.0, max_value=1.5, value=1.29, step=0.001, format="%.3f")
-        #ortsspezifisch = st.number_input("Ortsspezifischer TDS-Wert (tTDS/m³)", min_value=0.0, max_value=1.0, value=0.000, step=0.001, format="%.3f")
+    # ============================================================================================    
+    # --- Variante: Manuelle Eingabe ---
+    elif import_methode == "Manuelle Eingabe":
+        st.markdown("### Manuelle Eingabe für Dichtewerte")
+        ortsdichte = st.number_input("Ortsdichte (t/m³)", min_value=1.0, max_value=1.5, value=1.23, step=0.01)
+        mindichte = st.number_input("Minimale Beladedichte", min_value=1.0, max_value=1.5, value=1.15, step=0.001)
+        maxdichte = st.number_input("Maximale Beladedichte", min_value=1.0, max_value=1.5, value=1.29, step=0.001)
+        ortsspezifisch = st.number_input("Ortsspezifischer TDS-Wert", min_value=0.0, max_value=1.0, value=0.25, step=0.001)
 
         if st.button("💾 Manuelle Werte übernehmen"):
-            st.session_state["bonus_methode"] = "mona"
-            st.session_state["bonus_mona_werte"] = {
+            dichte_daten = [{
+                "name": "manuell",
                 "ortsdichte": ortsdichte,
-                #"ortspezifisch": ortsspezifisch,
                 "mindichte": mindichte,
-                "maxdichte": maxdichte
-            }
-            st.success("✅ Manuelle Bonuswerte wurden gespeichert und gelten ab sofort für alle Umläufe.")
-        
-  
-#==============================================================================================================================
+                "maxdichte": maxdichte,
+                "ortspezifisch": ortsspezifisch
+            }]
+            st.success("✅ Manuelle Werte gespeichert.")
+
+    # ============================================================================================ 
+    # 🔁 Einheitliches Zwischenspeichern aller Dichtewerte
+    if dichte_daten:
+        st.session_state["bonus_dichtewerte"] = dichte_daten
+        st.session_state["dichte_polygone"] = dichte_daten  # 🔧 Für Funktionen wie initialisiere_polygon_werte()
+
+    # ✅ Validierung je nach Berechnungsmethode
+    werte_ok = True
+    for eintrag in st.session_state.get("bonus_dichtewerte", []):
+        if methode_code == "hpa":
+            werte_ok = all(eintrag.get(k) not in [None, 0] for k in ["ortsdichte", "mindichte", "ortspezifisch"])
+        elif methode_code == "mona":
+            werte_ok = all(eintrag.get(k) not in [None, 0] for k in ["ortsdichte", "mindichte", "maxdichte"])
+        if not werte_ok:
+            break
+
+    if not werte_ok:
+        st.warning("⚠️ Für die gewählte Methode fehlen notwendige Werte. Die Bonusberechnung ist derzeit nicht möglich.")
+
+
+#============================================================================================
 # 🔵 Berechnungs-Parameter in der Sidebar
-#==============================================================================================================================
+#============================================================================================
 
 # --- Dichteparameter Setup ---
 with st.sidebar.expander("⚙️ Setup - Berechnungen"):
@@ -295,7 +384,9 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
         min_value=1.0, max_value=2.5,
         value=1.98, step=0.01, format="%.2f"
     )
-
+    
+    st.markdown("---") 
+    
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
         min_value=0.0, max_value=2.0,
@@ -310,53 +401,45 @@ with st.sidebar.expander("⚙️ Setup - Berechnungen"):
         step=0.1,
         format="%.1f"
     )
+    st.markdown("---") 
+    # ✅ Toggle für Nutzung der Gemischdichte
+    nutze_gemischdichte = st.toggle(
+        "Gemischdichte für Start- und Endzeitpunkt Baggern verwenden?",
+        value=True,
+        help="Wenn aktiviert, wird die Gemischdichte zur Bestimmung des Beginns und Endes des Baggerns herangezogen."
+    )
 
-    nutze_gemischdichte = st.radio(
-        "Gemischdichte für Startzeitpunkt Baggern und Vollfahrt verwenden?",
-        ["Ja", "Nein"],
-        index=0,
-        horizontal=True
-    ) == "Ja"
 
     dichte_grenze = st.number_input(
-        "🔎 Grenzwert Gemischdichte für Ende Baggern",
+        "🔎 min. Grenzwert Gemischdichte [t/m³]",
         min_value=1.0, max_value=1.2, step=0.01, value=1.10,
         format="%.2f"
     )
     
     rueckblick_minute = st.slider(
-        "⏱️ Rückblickzeit für Dichteprüfung (Minuten)", 
+        "⏱️ Rückblickzeit (min) für Gemischdichteprüfung - Statuswechsel 2 > 3", 
         min_value=0.0, max_value=4.0, step=0.5, value=2.0
     )
-
-    nutze_schiffstrategie = st.radio(
+    st.markdown("---") 
+    # ✅ Toggle korrekt einer Variable zuweisen
+    nutze_schiffstrategie = st.toggle(
         "Start-/Endstrategien aus Schiffsdaten verwenden?",
-        ["Ja", "Nein"],
-        horizontal=True
-    ) == "Ja"
+        value=True,
+        help="Wenn aktiviert, werden gespeicherte Strategien aus der Schiffsparameterdatei übernommen."
+    )
 
-# --- Solltiefen-Setup ---
-with st.sidebar.expander("📉 Setup - Solltiefen"):
-    solltiefe_slider = st.number_input(
-        "**Solltiefe (m)** \n_Nur falls keine XML mit gültiger Tiefe geladen wird_", 
-        min_value=-30.0, max_value=0.0, 
-        value=0.0, step=0.1, format="%.2f"
-    )
-    toleranz_oben = st.slider(
-        "Obere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
-    )
-    toleranz_unten = st.slider(
-        "Untere Toleranz (m)", min_value=0.0, max_value=2.0, value=0.5, step=0.1
-    )
+
+
+
 
 # Platzhalter für Erkennungsinfo Koordinatensystem
 koordsys_status = st.sidebar.empty()
 
 
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 MoNa-Daten verarbeiten und vorbereiten
-#==============================================================================================================================
+#============================================================================================
 if uploaded_files:
     try:
         if datenformat == "MoNa":
@@ -372,11 +455,8 @@ if uploaded_files:
 
     else:
         # ✅ Dieser Block wird nur ausgeführt, wenn KEIN Fehler aufgetreten ist
-
         # Erfolgsmeldung anzeigen
         upload_status.success(f"{len(df)} Zeilen aus {len(uploaded_files)} Datei(en) geladen")
-
-
 
         # TDS-Parameter berechnen
         df = berechne_tds_parameter(df, pf, pw)
@@ -391,10 +471,14 @@ if uploaded_files:
             proj_system, epsg_code, auto_erkannt = erkenne_koordinatensystem(
                 df, st=st, status_element=koordsys_status
             )
+
+
+
+
             
-#==============================================================================================================================
+#============================================================================================
 # 🔵 # 📋 Time-Slider
-#==============================================================================================================================        
+#============================================================================================        
 # Zeitbereich ermitteln aus df
         zeit_min = df["timestamp"].min()
         zeit_max = df["timestamp"].max()
@@ -423,7 +507,9 @@ if uploaded_files:
             f"{start.strftime('%d.%m.%Y %H:%M:%S')} – {ende.strftime('%d.%m.%Y %H:%M:%S')} UTC"
         )
 
-#==============================================================================================================================
+#============================================================================================
+# 🔵 # 📋 Schiff zuweisen
+#============================================================================================
 
         df, schiffsnamen = setze_schiff_manuell_wenn_notwendig(df, st)
 
@@ -458,14 +544,9 @@ if uploaded_files:
                 for spalte, anzahl in fehlerhafte:
                     st.warning(f"⚠️ {anzahl} Werte in **{spalte}** außerhalb gültiger Grenzen für **{schiff}** – wurden entfernt.")
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 # 📋 Schiffsparameter bearbeiten und speichern
-#==============================================================================================================================
-
-
-
-
-        # 📋 Schiffsparameter bearbeiten und speichern
+#============================================================================================
 
         with st.sidebar.expander("🔧 Schiffsparameter", expanded=False):
             if len(schiffe) == 1:
@@ -589,9 +670,9 @@ if uploaded_files:
             strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
 
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 Filterleiste und Grundeinstellungen
-#==============================================================================================================================
+#============================================================================================
 
         # ------------------------------------------------------------------------------------------------
         # 🔢 1. Vier Spalten nebeneinander: Startwert, Umlaufauswahl, Zeitformat, Zeitzone
@@ -625,8 +706,6 @@ if uploaded_files:
         # 📊 Ergänze df um Status_neu-Spalte: Kennzeichnet z. B. 'Leerfahrt', 'Baggern' ...
         df = berechne_status_neu_cached(df, umlauf_info_df)
 
-        
-        
         # ------------------------------------------------------------------------------------------------
         # 📅 3. Ergänze Spalten für spätere Visualisierungen (Start-/Endzeit als eigene Spalten)
         # ------------------------------------------------------------------------------------------------
@@ -676,8 +755,6 @@ if uploaded_files:
                     "dezimalstunden": "Dezimalstunden"
                 }[x]
             )
-        
-        
         # ------------------------------------------------------------------------------------------------
         # 🌍 6. Zeitzone für Anzeige wählen (UTC oder Lokalzeit)
         # ------------------------------------------------------------------------------------------------
@@ -687,9 +764,6 @@ if uploaded_files:
                 ["UTC", "Lokal (Europe/Berlin)"],
                 index=0
             )
-
-
-
         # ------------------------------------------------------------------------------------------------
         # 🕓 7. Zeitzonen prüfen und ggf. auf UTC setzen
         # ------------------------------------------------------------------------------------------------
@@ -703,6 +777,7 @@ if uploaded_files:
         # → wichtig, da danach die Zuordnung zu 'Umlauf' für Filterung & Anzeige erfolgt
         df = nummeriere_umlaeufe(df, startwert=startwert)
         
+
         # ------------------------------------------------------------------------------------------------
         # 🧾 9. Liste der verfügbaren Umläufe vorbereiten (z. B. für Dropdown-Auswahl)
         # ------------------------------------------------------------------------------------------------
@@ -738,29 +813,27 @@ if uploaded_files:
             df_context = df.copy()
 
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 Globale Layersteuerung
-#==============================================================================================================================
+#============================================================================================
 
         # Auswahl wurde zuvor gesetzt
         
         show_status1_b, show_status2_b, show_status3_b, show_status456_b, show_status1_v, show_status2_v, show_status3_v, show_status456_v, auto_modus_aktiv = zeige_layer_steuerung(umlauf_auswahl)
      
-#==============================================================================================================================
+#============================================================================================
 # 🔵 Baggerseite erkennen und auswählen
-#==============================================================================================================================
+#============================================================================================
 
-# Auswahl der Baggerseite (Auto / BB / SB / BB+SB)
+        # Auswahl der Baggerseite (Auto / BB / SB / BB+SB)
 
         seite_auswahl = locals().get("seite_auswahl", "Auto")
         erkannte_seite = locals().get("erkannte_seite", "BB")
         seite = erkannte_seite if seite_auswahl == "Auto" else seite_auswahl
 
-        
-
-#==============================================================================================================================
+#============================================================================================
 # 🔵 Rechtswerte normalisieren (nur für UTM)
-#==============================================================================================================================
+#============================================================================================
 
         def normalisiere_rechtswert(wert):
             if proj_system == "UTM" and auto_erkannt and wert > 30_000_000:
@@ -772,9 +845,9 @@ if uploaded_files:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             df[col] = df[col].apply(normalisiere_rechtswert)
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 XML-Dateien (Baggerfelder) einlesen
-#==============================================================================================================================
+#============================================================================================
 
         baggerfelder = []
         if uploaded_xml_files:
@@ -792,26 +865,20 @@ if uploaded_files:
             except Exception as e:
                 xml_status.error(f"Fehler beim Verarbeiten der XML-Dateien: {e}")
 
-#==============================================================================================================================
+#============================================================================================
 # 🔵 Dichtepolygone – Zuweisung von Dichteparametern je Position innerhalb eines Umlaufs
-#==============================================================================================================================
-
+#============================================================================================
         
-        
-        # 💾 EPSG-Code (Koordinatensystem) im Session-State speichern – wird für spätere Transformation benötigt
+        # 💾 EPSG-Code (Koordinatensystem) im Session-State speichern
         #     → wird später z. B. für Umrechnung der Koordinaten gebraucht
         st.session_state["epsg_code"] = epsg_code
         
-        
-        # ✅ Prüfe, ob die Dichtepolygone bereits im Session-State vorhanden sind
-        #     → sie wurden zuvor evtl. aus einer ASCII-Datei geladen
+        # ✅ Prüfen, ob Dichtepolygone bereits geladen wurden (aus ASCII-Datei o. ä.)
         if "dichte_polygone" in st.session_state:
             dichte_polygone = st.session_state["dichte_polygone"]
         
-        # ➕ Weist jedem Punkt im DataFrame `df` einen Dichtewert aus den Polygonen zu
-        #     → aber nur, wenn die Polygone vorher erfolgreich geladen wurden
-        #     → betrifft z. B. Punkte mit Status "Baggern", die innerhalb eines Dichtepolygons liegen
-
+        # 🔁 Prüfen, ob df bereits mit Polygonwerten angereichert wurde
+        #     → verhindert doppelte Berechnung bei erneutem Umlaufwechsel o. ä.
         aktueller_key = make_polygon_cache_key(
             df, baggerfelder, st.session_state.get("dichte_polygone"),
             epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider
@@ -820,6 +887,7 @@ if uploaded_files:
         if st.session_state.get("polygon_key") == aktueller_key and "df_mit_polygon" in st.session_state:
             df = st.session_state["df_mit_polygon"]
         else:
+            # ➕ Neue Anreicherung nur wenn sich Parameter geändert haben
             df = initialisiere_polygon_werte(
                 df,
                 baggerfelder=baggerfelder,
@@ -832,57 +900,48 @@ if uploaded_files:
             )
             st.session_state["df_mit_polygon"] = df
             st.session_state["polygon_key"] = aktueller_key
-
-
-
-
         
-        # 🛠️ Debugging-Block (auskommentiert): zeigt Anzahl zugewiesener Dichtezonen und Details
-        # anzahl_zugewiesen = df["Dichte_Polygon_Name"].notna().sum()
-        # st.info(f"🔍 {anzahl_zugewiesen} Datenpunkten wurden Dichtewerte zugewiesen.")
-        # st.dataframe(
-        #     df[df["Dichte_Polygon_Name"].notna()][["timestamp", "RW_Schiff", "HW_Schiff", "Dichte_Polygon_Name"]],
-        #     use_container_width=True
-        # )
+
+#============================================================================================
+# 🔢 Berechnung von Kennzahlen und Zeitpunkten je Umlauf
+#============================================================================================
         
-        
-        # 📊 Für jeden Umlauf (z. B. eine Fahrt vom Leer bis zur Verbringung) werden Kennzahlen berechnet
-        #     → Die Funktion wertet z. B. Volumen, Masse, Dichte, Strecken usw. aus
+        # 📊 Kennzahlen berechnen für jeden erkannten Umlauf
+        #     → z. B. Volumen, Masse, Dichte, Strecke etc.
         auswertungen = [berechne_umlauf_kennzahlen(row, df) for _, row in umlauf_info_df.iterrows()]
         df_auswertung = pd.DataFrame(auswertungen)
         
         
-        # 🔗 Füge dem Auswertungs-DataFrame die Umlaufnummern hinzu
-        # 🔗 Füge dem Auswertungs-DataFrame die Umlaufnummern hinzu
-        # → wichtig für spätere Zusammenführung (z. B. mit manuellen Daten)
+        
+        # 🔗 Umlaufnummern ergänzen (für spätere Tabellenverknüpfung)
         if not umlauf_info_df.empty and "Umlauf" in umlauf_info_df.columns:
             df_auswertung["Umlauf"] = umlauf_info_df["Umlauf"].values
         else:
-            df_auswertung["Umlauf"] = pd.Series(dtype=int)  # leere Spalte anlegen
+            df_auswertung["Umlauf"] = pd.Series(dtype=int)  # Leere Spalte mit Typ
         
-        # ✅ Zusatzspalte erstellen: Zeitstempel des ersten "Baggern"-Punktes pro Umlauf
+        # 🕓 Zeitstempel des ersten Baggerpunkts je Umlauf ermitteln
         if df_auswertung.empty:
-            st.warning("⚠️ Keine vollständigen Umläufe erkannt – Visualisierung nicht verfügbar.")
+            st.warning("⚠️ Datei enthält keine vollständigen Umläufe  – Visualisierung nicht möglich.")
             df_auswertung["timestamp_beginn_baggern"] = pd.NaT
         else:
             beginn_baggern_liste = []
         
             for umlauf_nummer in df_auswertung["Umlauf"]:
-                # Hole die passende Zeile aus der Umlauf-Info-Tabelle
+                # 🔍 Suche passende Zeile im Info-DataFrame
                 zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_nummer]
         
                 if not zeile.empty:
-                    # Lese Start- und Endzeit des Baggerns für diesen Umlauf
+                    # ⏱️ Zeitfenster für „Baggern“ bestimmen
                     start = pd.to_datetime(zeile.iloc[0]["Start Baggern"])
                     ende = pd.to_datetime(zeile.iloc[0]["Start Vollfahrt"])
         
-                    # Zeitzonen korrekt setzen
+                    # 🌍 Zeitzonen korrekt setzen
                     if start.tzinfo is None:
                         start = start.tz_localize("UTC")
                     if ende.tzinfo is None:
                         ende = ende.tz_localize("UTC")
         
-                    # Filtere passende Datenpunkte
+                    # 🔎 Filter auf Baggerpunkte innerhalb des Zeitfensters
                     df_baggern = df[
                         (df["timestamp"] >= start) &
                         (df["timestamp"] <= ende) &
@@ -897,65 +956,57 @@ if uploaded_files:
         
             # 🧾 Neue Spalte anhängen
             df_auswertung["timestamp_beginn_baggern"] = beginn_baggern_liste
-
-
-        
-
-
-                
-#==============================================================================================================================
+              
+#============================================================================================
 # 🔵 Solltiefe auf Basis der Baggerfelder berechnen
-#==============================================================================================================================
+#============================================================================================
 
-            # 📦 Smarter Caching-Mechanismus
-            aktueller_key = make_polygon_cache_key(
-                df, baggerfelder, st.session_state.get("dichte_polygone"),
-                epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider
-            )
-            
-            if st.session_state.get("polygon_key") == aktueller_key and "df_mit_polygon" in st.session_state:
-                df = st.session_state["df_mit_polygon"]
-            else:
-                df = initialisiere_polygon_werte(
-                    df,
-                    baggerfelder=baggerfelder,
-                    dichte_polygone=st.session_state.get("dichte_polygone"),
-                    epsg_code=epsg_code,
-                    seite=seite,
-                    toleranz_oben=toleranz_oben,
-                    toleranz_unten=toleranz_unten,
-                    solltiefe_slider=solltiefe_slider
-                )
-                st.session_state["df_mit_polygon"] = df
-                st.session_state["polygon_key"] = aktueller_key
-
-
+        # 📦 Smarter Caching-Mechanismus für Polygonanreicherung
+        #     → spart Rechenzeit, wenn sich Parameter nicht geändert haben
+        aktueller_key = make_polygon_cache_key(
+            df, baggerfelder, st.session_state.get("dichte_polygone"),
+            epsg_code, seite, toleranz_oben, toleranz_unten, solltiefe_slider
+        )
         
+        if st.session_state.get("polygon_key") == aktueller_key and "df_mit_polygon" in st.session_state:
+            df = st.session_state["df_mit_polygon"]
+        else:
+            # ➕ Neue Anreicherung, wenn sich Parameter geändert haben
+            df = initialisiere_polygon_werte(
+                df,
+                baggerfelder=baggerfelder,
+                dichte_polygone=st.session_state.get("dichte_polygone"),
+                epsg_code=epsg_code,
+                seite=seite,
+                toleranz_oben=toleranz_oben,
+                toleranz_unten=toleranz_unten,
+                solltiefe_slider=solltiefe_slider
+            )
+            st.session_state["df_mit_polygon"] = df
+            st.session_state["polygon_key"] = aktueller_key
+        
+        # 🧾 Namen der Bagger- und Verbringfelder extrahieren (nur wenn Spalten vorhanden)
         bagger_namen = []
         verbring_namen = []
         
-        # 🔐 Nur ausführen, wenn beide Spalten vorhanden sind
         if "Polygon_Name" in df.columns and "Status_neu" in df.columns:
             df_bagger = df[df["Status_neu"] == "Baggern"]
             df_verbring = df[df["Status_neu"] == "Verbringen"]
         
             bagger_namen = sorted(df_bagger["Polygon_Name"].dropna().unique())
             verbring_namen = sorted(df_verbring["Polygon_Name"].dropna().unique())
-
-
-
-
-
-        # Solltiefe analysieren und Herkunft feststellen
+        
+        # 🔎 Aktuelle Solltiefe bestimmen und Herkunft analysieren
         if "Solltiefe_Aktuell" in df.columns and df["Solltiefe_Aktuell"].notnull().any():
             gueltige = df["Solltiefe_Aktuell"].dropna()
             if (gueltige == gueltige.iloc[0]).all():
-                solltiefe_wert = gueltige.iloc[0]
+                solltiefe_wert = gueltige.iloc[0]  # Einheitlicher Wert im gesamten df
             else:
-                solltiefe_wert = "variabel"
+                solltiefe_wert = "variabel"       # Unterschiedliche Werte → variabel
         else:
-            solltiefe_wert = None
-
+            solltiefe_wert = None                 # Keine Werte vorhanden
+        
+        # 🧠 Herkunftslogik: Bestimme, wie Solltiefe zustande kam
         if solltiefe_wert is None:
             solltiefe_herkunft = "nicht definiert"
         elif solltiefe_wert == solltiefe_slider:
@@ -964,8 +1015,8 @@ if uploaded_files:
             solltiefe_herkunft = "aus XML - mehrere Werte"
         else:
             solltiefe_herkunft = "aus XML-Datei übernommen"
-
-        # Ausgabe vorbereiten
+        
+        # 📤 Ausgabeformatierung der Solltiefe
         if isinstance(solltiefe_wert, (int, float)):
             anzeige_solltiefe = f"{solltiefe_wert:.2f}"
             anzeige_m = " m"
@@ -975,87 +1026,266 @@ if uploaded_files:
         else:
             anzeige_solltiefe = " "
             anzeige_m = ""
-
-
-        # ------------------------------------------------------------------------------------------------------------------
-        # 🎨 HTML-Styling für KPI-Panels
-        # ------------------------------------------------------------------------------------------------------------------
-        st.markdown("""
-        <style>
-            .big-num {font-size: 2.5rem; font-weight: bold;}
-            .panel {background: #f4f8fc; border-radius: 16px; padding: 20px; margin-bottom: 1.5rem;}
-            .caption {font-size: 1rem; color: #555;}
-            .highlight {font-weight: bold; font-size: 1.2rem; color: #0353a4;}
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # 👉 Auswahlzeile vorbereiten, falls ein einzelner Umlauf gewählt ist
-        zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
+#============================================================================================
 
         df_ungefiltert = df.copy()
 
-#==============================================================================================================================
+
+#============================================================================================
+# 🔵 FESTSTOFFDATEN – Manuelle Eingaben (CSV/Excel), Zusammenführung, Bearbeitung in Sidebar
+#============================================================================================
+
+        # ✅ Relevante Daten in Session speichern (für spätere Schritte / Module)
+        st.session_state["umlauf_info_df_all"] = umlauf_info_df_all
+        st.session_state["df_auswertung"] = df_auswertung
+
+        # 📦 Sidebar: Datenimport und manuelle Bearbeitung
+        with st.sidebar.expander("📥 Feststoffdaten laden und bearbeiten", expanded=False):
+            st.markdown("Lade CSV oder Excel mit Feststoffdaten. Bearbeite sie anschließend direkt.")
+
+            # 🔄 Eingabedaten vorbereiten
+            df_import = None           # CSV-Import
+            df_excel_import = None     # Excel-Import
+
+            # 1️⃣ CSV-Datei hochladen (manuell gespeicherte Feststoffdaten)
+            uploaded_csv = st.file_uploader("📄 CSV (frühere Eingaben)", type=["csv"], key="sidebar_csv")
+            if uploaded_csv:
+                try:
+                    df_import = pd.read_csv(uploaded_csv)
+                    df_import["timestamp_beginn_baggern"] = pd.to_datetime(df_import["timestamp_beginn_baggern"], utc=True)
+                    st.success("✅ CSV erfolgreich geladen.")
+                except Exception as e:
+                    st.error(f"❌ Fehler beim Einlesen der CSV: {e}")
+
+            # 2️⃣ Excel-Datei hochladen (z. B. Wochenbericht vom Schiff)
+            uploaded_excel = st.file_uploader("📘 Excel: Wochenbericht vom Schiff", type=["xlsx"], key="sidebar_excel")
+            if uploaded_excel:
+                try:
+                    df_excel_import = lade_excel_feststoffdaten_cached(uploaded_excel)
+                    st.success("✅ Excel erfolgreich geladen.")
+                except Exception as e:
+                    st.error(f"❌ Fehler beim Einlesen der Excel-Datei: {e}")
+
+            # 3️⃣ Weiter nur, wenn beide Basisdaten vorhanden sind
+            umlauf_info_df_all = st.session_state.get("umlauf_info_df_all", pd.DataFrame())
+            df_auswertung = st.session_state.get("df_auswertung", pd.DataFrame())
+
+            if not umlauf_info_df_all.empty and not df_auswertung.empty:
+                # 🔍 Typanpassung: Umlauf-Nummern müssen ganzzahlig sein
+                df_auswertung["Umlauf"] = df_auswertung["Umlauf"].astype(int)
+                umlauf_info_df_all["Umlauf"] = umlauf_info_df_all["Umlauf"].astype(int)
+
+                # ✳️ Manuelle Datentabelle initialisieren (Basis: alle Umläufe)
+                df_manuell = initialisiere_manuell_df(umlauf_info_df_all, df_auswertung)
+
+                # 🔗 Daten aus CSV und Excel (sofern vorhanden) in die Tabelle einfügen
+                df_manuell, fehlende_merge_zeilen = merge_manuelle_daten(
+                    df_manuell, df_csv=df_import, df_excel=df_excel_import
+                )
+
+                # 🧠 Aktuelle Version in den Session State schreiben
+                st.session_state["df_manuell"] = df_manuell
+                st.session_state["fehlende_merge_zeilen"] = fehlende_merge_zeilen
+
+                # ⚠️ Info bei fehlender Zuordnung (z. B. Zeitstempel nicht gefunden)
+                if not fehlende_merge_zeilen.empty:
+                    st.warning(f"⚠️ {len(fehlende_merge_zeilen)} Umläufe ohne passende CSV-/Excel-Zuordnung.")
+
+                # ✏️ Eingabemaske: Manuelle Daten direkt editieren
+                st.markdown("#### ✏️ Editor Feststoffwerte")
+                df_editor = df_manuell.copy()
+
+                df_editor_display = st.data_editor(
+                    df_editor.loc[:, ["Umlauf", "timestamp_beginn_baggern", "feststoff", "proz_wert"]],
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "Umlauf": st.column_config.NumberColumn("Umlauf", disabled=True),
+                        "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern", disabled=True),
+                        "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
+                        "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
+                    },
+                    hide_index=True
+                )
+
+                # 💾 Überarbeitete Werte wieder speichern
+                st.session_state["df_manuell"] = df_editor_display.copy()
+
+                # 📤 Exportbutton zum Speichern der überarbeiteten Tabelle
+                now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                csv_data = df_editor_display.to_csv(index=False).encode("utf-8")
+                csv_filename = f"{now_str}_manuell_feststoff.csv"
+
+                st.download_button(
+                    label="📥 Manuelle Feststoffwerte als .csv speichern",
+                    data=csv_data,
+                    file_name=csv_filename,
+                    mime="text/csv"
+                )
+            else:
+                st.info("ℹ️ Noch keine Umlaufdaten oder Auswertung geladen.")
+
+        df = mappe_umlaufnummer(df, umlauf_info_df)
+
+#============================================================================================
 # 🔵 # Zentralisierte Berechnung nur bei Auswahl eines einzelnen Umlauf
-#==============================================================================================================================
-   
-    zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
+#============================================================================================
     
-    if not zeile.empty:
-        row = zeile.iloc[0]
+        # 🎯 Filtere die Daten für den ausgewählten Umlauf (sofern nicht "Alle" gewählt wurde)
+        # 👉 Auswahlzeile vorbereiten, falls ein einzelner Umlauf gewählt ist
+        zeile = umlauf_info_df[umlauf_info_df["Umlauf"] == umlauf_auswahl] if umlauf_auswahl != "Alle" else pd.DataFrame()
     
-        # 🗺️ WICHTIG: Karte anzeigen UND gefiltertes df zurückholen
-        df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
-    
-        # 🧠 Strategie vorbereiten
-        if nutze_schiffstrategie:
-            strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+        if not zeile.empty:
+            # 🧾 Einzelne Zeile (Umlauf) extrahieren
+            row = zeile.iloc[0]
+        
+            # 🗺️ Zeige Karte und erhalte gefilterten DataFrame für diesen Umlauf
+            df, _ = zeige_umlauf_info_karte(umlauf_auswahl, zeile, zeitzone, epsg_code, df)
+        
+            # 🧠 Erstelle Start-/Endstrategien pro Parameter (z. B. Verdrängung, Ladungsvolumen)
+            if nutze_schiffstrategie:
+                strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
+            else:
+                strategie = {
+                    "Verdraengung": {"Start": None, "Ende": None},
+                    "Ladungsvolumen": {"Start": None, "Ende": None}
+                }
+        
+            # 📊 Führe zentrale Auswertung für den gewählten Umlauf durch
+            berechnungen = berechne_umlauf_auswertung(
+                df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code,
+                df_manuell=st.session_state.get("df_manuell"),
+                nutze_schiffstrategie=nutze_schiffstrategie,
+                nutze_gemischdichte=nutze_gemischdichte  # ⬅️ das ist neu!
+            )
+
+        
+            # 📦 Ergebnisse der Auswertung entpacken
+            (
+                tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp,
+                debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung
+            ) = berechnungen
+        
         else:
-            strategie = {
-                "Verdraengung": {"Start": None, "Ende": None},
-                "Ladungsvolumen": {"Start": None, "Ende": None}
+            # ⚠️ Kein einzelner Umlauf ausgewählt – Leere Initialisierung
+            row = None
+            tds_werte = werte = kennzahlen = strecken = strecke_disp = dauer_disp = debug_info = []
+            bagger_namen = verbring_namen = []
+            amob_dauer = 0.0
+            dichtewerte = abrechnung = {}
+
+
+# ============================================================================================
+# 🎨 HTML-Styling für KPI-Panel
+#     ➤ Definiert eigene CSS-Klassen zur optischen Gestaltung von Kennzahlen-Panels
+#     ➤ Wird später z. B. für die Darstellung von Volumen, Masse etc. genutzt
+# ============================================================================================
+        
+        st.markdown("""
+        <style>
+            .big-num {
+                font-size: 2.5rem;
+                font-weight: bold;
             }
-    
-        # ✅ Jetzt erst: zentrale Auswertung mit gefiltertem df
-        berechnungen = berechne_umlauf_auswertung(
-            df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
-        )
-    
-        (
-            tds_werte, werte, kennzahlen, strecken, strecke_disp, dauer_disp,
-            debug_info, bagger_namen, verbring_namen, amob_dauer, dichtewerte, abrechnung
-        ) = berechnungen
-    
-    else:
-        row = None
-        tds_werte = werte = kennzahlen = strecken = strecke_disp = dauer_disp = debug_info = []
-        bagger_namen = verbring_namen = []
-        amob_dauer = 0.0
-        dichtewerte = abrechnung = {}
-
-#==============================================================================================================================
-# 🔵 Tabs definieren
-#==============================================================================================================================
-
-    # Tabs für die verschiedenen Visualisierungen
-    if not df_auswertung.empty: 
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-            "🗺️ Karte",
-            "📊 Prozessdaten",
-            "🌊 Tiefenprofil",
-            "🧾 Umlauftabellen",
-            "🧾 Umlauftabellen - TDS",
-            "🧪 Debug",
-            "💾 Export"
-        ])
+            .panel {
+                background: #f4f8fc;
+                border-radius: 16px;
+                padding: 20px;
+                margin-bottom: 1.5rem;
+            }
+            .caption {
+                font-size: 1rem;
+                color: #555;
+            }
+            .highlight {
+                font-weight: bold;
+                font-size: 1.2rem;
+                color: #0353a4;
+            }
+        </style>
+        """, unsafe_allow_html=True)
         
-      
-#==============================================================================================================================
-# Tab 1 - Übersichtskarten 
-#==============================================================================================================================
-
+        
+# ============================================================================================
+# 🌐 Karten-Transformer vorbereiten (EPSG → WGS84)
+#     ➤ Zur Umrechnung von UTM oder anderen lokalen Koordinaten in GPS-Formate
+#     ➤ Voraussetzung für Mapbox-Darstellungen mit Längen-/Breitengraden
+# ============================================================================================
+        
         from pyproj import Transformer
+        if epsg_code:
+            transformer = Transformer.from_crs(epsg_code, "EPSG:4326", always_xy=True)
+        else:
+            transformer = None  # Optional: hier könnte man auch einen Fehler erzwingen bei fehlendem EPSG
         
-        with tab1:
+        
+# ============================================================================================
+# 🧭 Tab-Auswahl per PILL-Navigation (option_menu)
+#     ➤ Darstellung oben in der App, ersetzt klassische Tabs
+#     ➤ Optisch moderne Navigation (runde "Pills" mit Icons)
+# ============================================================================================
+        
+        # 🏷️ Klartext-Beschriftungen für Tabs (ohne Emojis)
+        tab_labels = [
+            "Karte",             # Interaktive Karte mit Fahrtspuren
+            "Prozessdaten",      # Zeitverläufe & Sensorwerte
+            "Tiefenprofil",      # Baggerkopftiefe
+            "Umlauftabelle",     # Zeitliche Übersicht aller Umläufe
+            "TDS-Tabellen",      # Abrechnungstabellen (Feststoffmengen etc.)
+            "Debug",             # Entwicklermodus mit Detailinfos
+            # "Export"           # Optionaler Tab, derzeit deaktiviert
+        ]
+        
+        # 🖼️ Bootstrap-kompatible Icons für jede Tab-Kategorie
+        tab_icons = [
+            "geo",               # Karte
+            "graph-up",          # Prozessdaten
+            "activity",          # Tiefenprofil
+            "journal-text",      # Umlauftabelle
+            "journal-text",      # TDS (nochmals gleiches Icon)
+            "tools"              # Debug-Modus
+        ]
+        
+        # 💡 Session-Init: Wähle standardmäßig den ersten Tab aus, wenn kein Zustand gesetzt ist
+        if "tab_auswahl" not in st.session_state:
+            st.session_state["tab_auswahl"] = tab_labels[0]
+        
+        # 📌 Darstellung des horizontalen PILL-Menüs über `streamlit-option-menu`
+        selected_tab = option_menu(
+            menu_title=None,                    # Kein Titel oberhalb der Navigation
+            options=tab_labels,                 # Auswahloptionen
+            icons=tab_icons,                    # Zugehörige Icons
+            orientation="horizontal",           # Horizontal angeordnet
+            styles={                            # Anpassung des Designs
+                "container": {
+                    "padding": "0!important",
+                    "background-color": "#FFFFFF"
+                },
+                "nav-link": {
+                    "font-size": "14px",
+                    "margin": "0 8px",
+                    "border-radius": "999px",   # Runde "Pills"
+                    "padding": "8px 18px",
+                    "color": "#333"
+                },
+                "nav-link-selected": {
+                    "background-color": "#EBF2FC",
+                    "color": "#3C598C"
+                }
+            },
+            default_index=tab_labels.index(st.session_state["tab_auswahl"]),
+            key="tab_auswahl"                   # Streamlit-State-Schlüssel
+        )
+        
+        # 🧠 Ausgewählten Tab für die nachfolgende Logik zugänglich machen
+        selected_tab = st.session_state["tab_auswahl"]
+
+# ============================================================================================
+# Tab 1 - Übersichtskarten
+# ============================================================================================
+        
+        if selected_tab == "Karte":
+            
             # --------------------------------------------------------------------------------------------------------------------------
             # 🌐 Karten-Transformer vorbereiten (für Plotly/Mapbox)
             # --------------------------------------------------------------------------------------------------------------------------
@@ -1110,6 +1340,9 @@ if uploaded_files:
             # --------------------------------------------------------------------------------------------------------------------------
             # 🟦 Linke Karte: Status 2 – Baggerstelle
             # --------------------------------------------------------------------------------------------------------------------------
+            # 📌 Sicherstellen, dass Umlaufnummern vorhanden und korrekt sind
+
+
             with col1:
                 fig, df_status2, df_456 = plot_karte(
                     df=df,
@@ -1177,11 +1410,11 @@ if uploaded_files:
                     strecken_panel_template
                 )
 
-#==============================================================================================================================
+#============================================================================================
 # Tab 2 - Diagramm Prozessdaten
-#==============================================================================================================================
+#============================================================================================
         
-        with tab2:
+        elif selected_tab == "Prozessdaten":
             st.markdown("#### 📈 Umlaufgrafik – Prozessdaten")
         
             if umlauf_auswahl != "Alle" and row is not None and tds_werte is not None:
@@ -1209,11 +1442,11 @@ if uploaded_files:
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
 
-# ==============================================================================================================================
+# ============================================================================================
 # Tab 3 - Diagramm Tiefe Baggerkopf (Modularisiert)
-# ==============================================================================================================================
+# ============================================================================================
        
-        with tab3:
+        elif selected_tab == "Tiefenprofil":
             st.markdown("#### Baggerkopftiefe")
             if umlauf_auswahl != "Alle":
                 zeige_baggerkopftiefe_grafik(
@@ -1227,17 +1460,15 @@ if uploaded_files:
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
                 
- #==============================================================================================================================
+#============================================================================================
 # Tab 4 - Umlauftabelle - gesamt 
-#==============================================================================================================================
+#============================================================================================
 
-
-        with tab4:
+        elif selected_tab == "Umlauftabelle":
             st.markdown("#### Auflistung aller Umläufe")
         
             if not umlauf_info_df.empty:
                 # ✅ Extrahiere ALLE Umlauf-Startzeiten (unabhängig von Filtersicht)
-                #umlauf_info_df_all = extrahiere_umlauf_startzeiten(df, startwert=startwert).copy()
         
                 # 📅 Erzeuge Tabelle mit einzelnen Umläufen und ihren Zeitabschnitten
                 df_umlaeufe, list_leer, list_bagg, list_voll, list_verk, list_umlauf = erzeuge_umlauftabelle_cached(
@@ -1253,375 +1484,127 @@ if uploaded_files:
                     gesamtzeiten["vollfahrt"], gesamtzeiten["verklapp"],
                     gesamtzeiten["umlauf"], zeitformat=zeitformat
                 )
+                # 🔢 Tabelle der Einzelumläufe
                 st.dataframe(df_umlaeufe, use_container_width=True, hide_index=True)
+
+                # ➕ Panels für Gesamtdauer statt langweilige Tabelle
                 st.markdown("#### Aufsummierte Dauer")
-                st.dataframe(df_gesamt, use_container_width=True, hide_index=True)
-        
-                
+                zeige_aufsummierte_dauer_panels(df_gesamt)
             else:
                 st.info("⚠️ Es wurden keine vollständigen Umläufe erkannt.")
           
 # ======================================================================================================================
 # # Tab 5 – 💠 UMLAUFTABELLE: TDS-Berechnung pro Umlauf
 # ======================================================================================================================
-
+        
         # Dieser Tab dient der Anzeige, manuellen Ergänzung und Berechnung von TDS-Kennzahlen je Umlauf
-    # 🔤 Abschnittsüberschrift für die TDS-Berechnung
+        elif selected_tab == "TDS-Tabellen":
 
- 
-        with tab5:
-            #st.write("🧪 Vorschau df_auswertung")
-            #st.dataframe(df_auswertung, use_container_width=True)
-       
-            st.markdown("#### TDS Berechnung pro Umlauf")        #        
-            # 🔽 Bereich für den Upload von CSV- und Excel-Feststoffdaten
-            with st.expander("⬆️ Manuelle Feststoffdaten laden (CSV & Excel)", expanded=False):
-                col_csv, col_excel = st.columns(2)
-                
-                # 📄 CSV-Import (frühere manuelle Eingaben)
-                with col_csv:
-                    uploaded_manuell_csv = st.file_uploader("📄 CSV-Import (frühere Eingabe)", type=["csv"], key="import_manuell")
-                    df_import = None
-                    if uploaded_manuell_csv is not None:
-                        try:
-                            df_import = pd.read_csv(uploaded_manuell_csv)
-                            df_import["timestamp_beginn_baggern"] = pd.to_datetime(df_import["timestamp_beginn_baggern"], utc=True)
-                            st.success("✅ CSV-Daten erfolgreich geladen.")
-                        except Exception as e:
-                            st.error(f"Fehler beim Einlesen der CSV: {e}")
+            st.markdown("#### 💠 TDS Berechnung pro Umlauf")
         
-
-                # 📘 Excel-Upload aus manuellem Schiffsbericht
-                with col_excel:
-                    uploaded_excel_feststoff = st.file_uploader("📘 Wochenbericht vom Schiff (Ladungsfeststoff und Zentrigungenwert importieren)", type=["xlsx"], key="excel_feststoff_upload")
-                    df_excel_import = None
-                
-                    if uploaded_excel_feststoff is not None:
-                        try:
-                            df_excel_import = lade_excel_feststoffdaten_cached(uploaded_excel_feststoff)
-                            st.success("✅ Excel-Feststoffdaten erfolgreich geladen.")
-                
-                            # ⬇️ Hier Hinweis anzeigen – nach erfolgreichem Upload und gesetztem Session-State
-                            fehlende_merge_zeilen = st.session_state.get("fehlende_merge_zeilen", pd.DataFrame())
-                            if not fehlende_merge_zeilen.empty:
-                                st.warning(f"⚠️ {len(fehlende_merge_zeilen)} Umläufe konnten nach dem Excel-Merge nicht zugewiesen werden.")
-                     
-                        except Exception as e:
-                            st.error(f"Fehler beim Einlesen der Excel-Datei: {e}")
-
-
-            
-            # ✅ Nur fortfahren, wenn Umlaufdaten vorhanden sind
-            if not umlauf_info_df.empty:
+            # 🛑 Sicherheitsprüfung: Sind manuelle Feststoffdaten vorhanden?
+            if "df_manuell" not in st.session_state or st.session_state["df_manuell"].empty:
+                st.warning("⚠️ Keine Feststoffdaten vorhanden. Bitte CSV oder Excel über die Sidebar laden.")
+                st.stop()
         
-                # -------------------------------------------------------------------------------------------------------------
-                # 🔄 Neuaufbau von df_manuell, falls neue Umläufe vorhanden sind
-                # -------------------------------------------------------------------------------------------------------------
-        
-                umlauf_ready = not umlauf_info_df_all.empty and "Umlauf" in umlauf_info_df_all.columns
-                auswertung_ready = not df_auswertung.empty and "Umlauf" in df_auswertung.columns
-        
-                if umlauf_ready and auswertung_ready:
-        
-                    # 🧹 Einheitliche Typisierung der Umlauf-Spalten (int notwendig für Merge)
-                    df_auswertung["Umlauf"] = df_auswertung["Umlauf"].astype(int)
-                    umlauf_info_df_all["Umlauf"] = umlauf_info_df_all["Umlauf"].astype(int)
-        
-                    # 🏗️ Grundstruktur der manuellen Tabelle aufbauen (Startzeit je Umlauf)
-                    df_manuell = umlauf_info_df_all[["Umlauf", "Start Baggern"]].copy()
-                    df_manuell = df_manuell.rename(columns={"Start Baggern": "timestamp_beginn_baggern"})
-        
-                    # 🔗 Dichtewerte je Umlauf ergänzen (aus Auswertungsdaten)
-                    df_manuell = df_manuell.merge(
-                        df_auswertung[[
-                            "Umlauf", "Dichte_Polygon_Name", "Ortsdichte", "Ortsspezifisch", "Mindichte", "Maxdichte"
-                        ]],
-                        on="Umlauf",
-                        how="left"
+            # 🔀 Prüfung der Umlauf-Auswahl – nur "Alle" erlaubt für TDS-Gesamttabelle
+            selected_umlauf = st.session_state.get("umlauf_auswahl", "Alle")
+            if selected_umlauf != "Alle":
+                st.info("🔁 Bitte 'Alle' im Umlauf-Auswahlmenü wählen, um TDS-Tabelle zu berechnen.")
+            else:
+                # 🔘 Button zur Berechnung aktivieren
+                if st.button("📊 TDS-Tabelle berechnen"):
+                    # 🚀 Starte zentrale Strategie-Definition (falls schiffspezifisch gewünscht)
+                    strategie = (
+                        schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
+                        if nutze_schiffstrategie else
+                        {"Verdraengung": {"Start": None, "Ende": None}, "Ladungsvolumen": {"Start": None, "Ende": None}}
                     )
         
-                    # ➕ Leerspalten für manuelle Eingabe vorbereiten
-                    df_manuell = df_manuell.assign(
-                        feststoff = df_manuell.get("feststoff", pd.Series([None]*len(df_manuell))),
-                        proz_wert = df_manuell.get("proz_wert", pd.Series([None]*len(df_manuell)))
-                    )
-
-        
-                    # ---------------------------------------------------------------------------------------------------------
-                    # 🔁 CSV-Werte importieren und zuweisen
-                    # ---------------------------------------------------------------------------------------------------------
-                    if df_import is not None:
-                        df_import["timestamp_beginn_baggern"] = pd.to_datetime(df_import["timestamp_beginn_baggern"], utc=True)
-                        df_manuell["timestamp_beginn_baggern"] = pd.to_datetime(df_manuell["timestamp_beginn_baggern"])
-        
-                        # 🕒 Zeitzonen anpassen (alle auf UTC bringen)
-                        if df_manuell["timestamp_beginn_baggern"].dt.tz is None:
-                            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_localize("UTC")
-                        else:
-                            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
-        
-                        # 🔎 Relevante Spalten identifizieren (alles außer Timestamp)
-                        df_import_cols = [col for col in df_import.columns if col != "timestamp_beginn_baggern"]
-        
-                        # 🧩 Merge der Daten
-                        df_manuell = df_manuell.merge(
-                            df_import[["timestamp_beginn_baggern"] + df_import_cols],
-                            on="timestamp_beginn_baggern",
-                            how="left",
-                            suffixes=("", "_import")
-                        )
-        
-                        # ✅ Werte übernehmen, falls vorhanden
-                        for col in df_import_cols:
-                            col_import = f"{col}_import"
-                            if col_import in df_manuell.columns:
-                                df_manuell[col] = df_manuell[col_import].combine_first(df_manuell[col])
-                                df_manuell.drop(columns=[col_import], inplace=True)
-        
-                    # ---------------------------------------------------------------------------------------------------------
-                    # 🔁 Excel-Werte importieren und zuweisen (innerhalb Toleranz ±5 Minuten)
-                    # ---------------------------------------------------------------------------------------------------------
-                    if df_excel_import is not None:
-                        df_excel_import["timestamp_beginn_baggern"] = pd.to_datetime(df_excel_import["timestamp_beginn_baggern"], utc=True)
-                        df_manuell["timestamp_beginn_baggern"] = pd.to_datetime(df_manuell["timestamp_beginn_baggern"])
-        
-                        # 🕒 Zeitzonen normalisieren
-                        if df_manuell["timestamp_beginn_baggern"].dt.tz is None:
-                            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_localize("UTC")
-                        else:
-                            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
-        
-                        # 🧹 Sortierung vor asof-Merge (Pflicht für merge_asof)
-                        df_excel_import = df_excel_import.sort_values("timestamp_beginn_baggern")
-                        df_manuell = df_manuell.sort_values("timestamp_beginn_baggern")
-        
-                        # 🔁 Merge innerhalb Toleranz von 5 Minuten (Excel → df_manuell)
-                        df_manuell = pd.merge_asof(
-                            df_manuell,
-                            df_excel_import,
-                            on="timestamp_beginn_baggern",
-                            direction="nearest",
-                            tolerance=pd.Timedelta(minutes=5),
-                            suffixes=("", "_excel")
-                        )
-
-                        # 🎯 Nur relevante Felder übernehmen
-                        for col in ["feststoff", "proz_wert"]:
-                            col_excel = f"{col}_excel"
-                            if col_excel in df_manuell.columns:
-                                df_manuell[col] = df_manuell[col_excel].combine_first(df_manuell[col])
-                                df_manuell.drop(columns=[col_excel], inplace=True)
-                                
-                        # 🔍 Nach dem Merge: Welche Zeilen haben weiterhin keine Zuweisung?
-                        fehlende_merge_zeilen = df_manuell[
-                            df_manuell["feststoff"].isna() | df_manuell["proz_wert"].isna()
-                        ]
-                        st.session_state["fehlende_merge_zeilen"] = fehlende_merge_zeilen
-        
-                    # 💾 Ergebnisse in Session-State speichern (für Editor oder Export)
-                    st.session_state["df_manuell"] = df_manuell
-
-
-        
-                # -------------------------------------------------------------------------------------------------------------
-                # ✏️ Eingabeformular für manuelle Werte + Berechnung + Export
-                # -------------------------------------------------------------------------------------------------------------
-                with st.expander("✏️ Eingabe manueller Feststoffwerte und Berechnung der TDS-Tabelle"):
-        
-                    # 🛑 Prüfen, ob df_manuell bereit ist
-                    if "df_manuell" not in st.session_state:
-                        st.error("❌ df_manuell fehlt. Bitte zuerst Baggerdaten und Dichte-Infos laden.")
-                        st.stop()
-        
-                    # 📝 Eingabeformular für manuelle Ergänzung
-                    with st.form("eingabe_und_berechnung_form"):
-        
-                        df_editor = st.session_state["df_manuell"].copy()
-        
-                        # 🔧 Interaktive Tabelle anzeigen (editable)
-                        df_editor_display = st.data_editor(
-                            df_editor,
-                            num_rows="dynamic",
-                            use_container_width=True,
-                            column_config={
-                                "Umlauf": st.column_config.NumberColumn("Umlauf", disabled=True),
-                                "timestamp_beginn_baggern": st.column_config.DatetimeColumn("Start Baggern", disabled=True),
-                                "Dichte_Polygon_Name": st.column_config.TextColumn("Bereich", disabled=True),
-                                "Ortsdichte": st.column_config.NumberColumn("Ortsdichte (t/m³)", format="%.3f"),
-                                "Ortsspezifisch": st.column_config.NumberColumn("Ortsspezifisch (tTDS/m³)", format="%.3f"),
-                                "Mindichte": st.column_config.NumberColumn("min. Baggerdichte (t/m³)", format="%.3f"),
-                                "Maxdichte": st.column_config.NumberColumn("max. Baggerdichte (t/m³)", format="%.3f"),  # ← NEU
-                                "feststoff": st.column_config.NumberColumn("Ladung - Feststoff (m³)", format="%.0f"),
-                                "proz_wert": st.column_config.NumberColumn("Zentrifuge (%)", format="%.1f")
-                            },
-                            hide_index=True
-                        )
-        
-                        # ⚙️ Session-Flag initialisieren (steuert späteren Button-Text)
-                        if "bereit_fuer_berechnung" not in st.session_state:
-                            st.session_state["bereit_fuer_berechnung"] = False
-        
-                        submitted = False
-        
-                        # 🔽 Ausgewählter Umlauf (für gezielte Bearbeitung oder "Alle")
-                        selected_umlauf = st.session_state.get("umlauf_auswahl", "Alle")
-        
-                        # 🔘 Logik für Buttons abhängig von Auswahl
-                        if selected_umlauf == "Alle":
-                            submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
-                        else:
-                            if not st.session_state.get("bereit_fuer_berechnung", False):
-                                submitted = st.form_submit_button("⏳ Berechnung starten")
-                                if submitted:
-                                    st.session_state["bereit_fuer_berechnung"] = True
-                                    st.rerun()
-                            else:
-                                submitted = st.form_submit_button("💾 Speichern + Berechnen + Exportieren")
-        
-                        # 💾 Speichern der Änderungen nach Absenden
-                        if submitted:
-                            st.session_state["df_manuell"] = df_editor
-                            st.success("✅ Änderungen wurden gespeichert.")
-
-                
-                # 🔁 Nach der Formulareingabe
-                if submitted:
-                    # 🔄 Reset des Session-Flags für Doppel-Logik
-                    st.session_state["bereit_fuer_berechnung"] = False
-                
-                    # 🔁 Übernahme der Eingabedaten aus dem Editor
-                    st.session_state["df_manuell"] = df_editor_display.copy()
-                
-                    # 🔍 Lade Strategie aus Schiffsparametern oder nutze Standardwerte
-                    if nutze_schiffstrategie:
-                        strategie = schiffsparameter.get(schiffsnamen[0], {}).get("StartEndStrategie", {})
-                    else:
-                        strategie = {
-                            "Verdraengung": {"Start": None, "Ende": None},
-                            "Ladungsvolumen": {"Start": None, "Ende": None}
-                        }
-
-                
-                    with st.spinner("Berechne TDS-Kennzahlen für alle Umläufe..."):
-                        # 🔢 TDS-Berechnung für alle Umläufe → Anzeige & Export
+                    # ⏳ Starte TDS-Berechnung für alle Umläufe
+                    with st.spinner("🔄 Berechne TDS-Kennzahlen für alle Umläufe..."):
                         df_tabelle, df_tabelle_export = erzeuge_tds_tabelle(
                             df, umlauf_info_df_all, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
                         )
+        
+                        # 📦 Ergebnisse in Session speichern
                         st.session_state["tds_df"] = df_tabelle
-                        st.session_state["tds_df_export"] = df_tabelle_export  # ❗ wichtig für andere Tabellen
-                
-                        # 📁 Vorbereitung der Excel-Datei
-                        import io
-                        from datetime import datetime, timedelta
-
-                
+                        st.session_state["tds_df_export"] = df_tabelle_export
+        
+                        # 💾 Export als Excel vorbereiten (2 Tabellenblätter)
                         now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                         excel_buffer = io.BytesIO()
-                
-                        # 🔧 Flache Spaltennamen für Export
                         df_export_flat = df_tabelle_export.copy()
-                        spalten_flat = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_export_flat.columns]
-                        df_export_flat.columns = spalten_flat
-                
-                        # 📏 Einheiten-Zeile passend zu den Spalten
-                        einheiten = [
-                            "", "t", "t", "t", "m³", "m³", "m³", "t/m³", "t/m³", "%",
-                            "m³", "t", "m³", "m³", "m³", "%", "m³", "m³", "m³"
+                        df_export_flat.columns = [
+                            " - ".join(col).strip() if isinstance(col, tuple) else col
+                            for col in df_export_flat.columns
                         ]
-                
+        
                         with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-                            # 📄 Blatt 1: TDS-Werte (Rohdaten)
-                            sheetname = "TDS-Werte"
-                            df_export_flat.to_excel(writer, sheet_name=sheetname, startrow=2, index=False, header=False)
-                            worksheet = writer.sheets[sheetname]
-                
-                            # ➕ Kopfzeile & Einheiten manuell ergänzen
-                            for col_num, header in enumerate(spalten_flat):
+                            # 📄 Export-Tabelle (roh)
+                            df_export_flat.to_excel(writer, sheet_name="TDS-Werte", startrow=2, index=False, header=False)
+                            worksheet = writer.sheets["TDS-Werte"]
+                            for col_num, header in enumerate(df_export_flat.columns):
                                 worksheet.write(0, col_num, header)
-                            for col_num, einheit in enumerate(einheiten):
-                                worksheet.write(1, col_num, einheit)
-                
-                            # 📄 Blatt 2: Anzeige-Tabelle (formatiert)
-                            df_anzeige = st.session_state["tds_df"].copy()
-                            df_anzeige.columns = [" - ".join(col).strip() if isinstance(col, tuple) else col for col in df_anzeige.columns]
+        
+                            # 📊 Anzeige-Tabelle (formatiert)
+                            df_anzeige = df_tabelle.copy()
+                            df_anzeige.columns = [
+                                " - ".join(col).strip() if isinstance(col, tuple) else col
+                                for col in df_anzeige.columns
+                            ]
                             df_anzeige.to_excel(writer, sheet_name="TDS-Anzeige", index=False)
-                
-                        # 🧠 Excel-Datei und CSV-Export in Session-State speichern
+        
+                        # Speichern im Session-State
                         st.session_state["export_excel"] = excel_buffer.getvalue()
                         st.session_state["export_excel_filename"] = f"{now_str}_TDS_Tabelle.xlsx"
-                
-                        df_export = st.session_state["df_manuell"]
-                        csv_data = df_export.to_csv(index=False).encode("utf-8")
-                        st.session_state["export_ready"] = True
-                        st.session_state["export_csv"] = csv_data
-                        st.session_state["export_filename"] = f"{now_str}_manuell_feststoff.csv"
-
-                
-                # -------------------------------------------------------------------------------------------------------------
-                # 💾 Downloadbuttons für CSV + Excel
-                # -------------------------------------------------------------------------------------------------------------
-                # ⬇️ CSV-Export: manuelle Feststoffdaten
-                if st.session_state.get("export_ready"):
-                    st.download_button(
-                        label="📥 Manuelle Feststoffwerte als .csv speichern",
-                        data=st.session_state["export_csv"],
-                        file_name=st.session_state["export_filename"],
-                        mime="text/csv"
-                    )
-                    st.session_state["export_ready"] = False
-                
-                # 📋 Anzeige der TDS-Tabelle
-                if "tds_df" in st.session_state:
-                    st.dataframe((st.session_state["tds_df"]), use_container_width=True, hide_index=True)
-                
-                # ⬇️ Excel-Export der TDS-Tabelle
-                if st.session_state.get("export_excel"):
-                    st.download_button(
-                        label="📥 TDS-Tabelle als .xlsx speichern",
-                        data=st.session_state["export_excel"],
-                        file_name=st.session_state["export_excel_filename"],
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                else:
-                    st.info("🔹 Noch keine TDS-Tabelle berechnet.")
-
-
-
+        
+            # 📋 TDS-Tabelle anzeigen, wenn vorhanden
+            if "tds_df" in st.session_state:
+                st.dataframe(st.session_state["tds_df"], use_container_width=True, hide_index=True)
+        
+            # 📥 Export-Button für XLSX
+            if st.session_state.get("export_excel"):
+                st.download_button(
+                    label="📥 TDS-Tabelle als .xlsx speichern",
+                    data=st.session_state["export_excel"],
+                    file_name=st.session_state["export_excel_filename"],
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.info("🔹 Noch keine TDS-Tabelle berechnet.")
+        
             # ---------------------------------------------------------------------------------------------------------------------
-            # Verbringstellen-Tabelle erzeugen und exportieren
+            # 📍 Verbringstellen-Tabelle (WSA-konform)
             # ---------------------------------------------------------------------------------------------------------------------
             st.markdown("---")   
             st.markdown("#### Verbringstellen-Tabelle")
-            import io
-            from datetime import datetime, timedelta
         
-            
             if not df.empty:
-                # 🔁 Alle Umläufe, unabhängig von Auswahl
+                # 🧮 Berechnung der Verbringstellen (Zeitpunkt & Polygon)
                 df_verbring_tab = erzeuge_verbring_tabelle(
                     df_ungefiltert,
                     umlauf_info_df_all,
                     transformer,
-                    zeitzone=zeitzone,  # oder z. B. st.session_state.get("zeitzone")
+                    zeitzone=zeitzone,
                     status_col="Status_neu"
                 )
-
-                         
+        
                 if df_verbring_tab.empty:
-                    st.warning("⚠️ Es wurden keine Verbringstellen erkannt. Stelle sicher, dass mindestens ein Polygonfeld vorhanden ist und Status 4/5/6 enthalten ist.")
+                    st.warning("⚠️ Keine Verbringstellen erkannt. Prüfe Polygone und Statuswerte (4/5/6).")
                 else:
-                    # Anzeige der Tabelle
+                    # 🖥️ Tabelle anzeigen
                     st.dataframe(df_verbring_tab, use_container_width=True, hide_index=True)
-            
-                    # ⬇️ Excel-Export mit MultiIndex
+        
+                    # 📁 Excel-Export ermöglichen
                     df_verbring_export = df_verbring_tab.copy()
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     dateiname = f"Verbringstellen_WSA_{schiff}_{timestamp}.xlsx"
-            
+        
                     excel_buffer = io.BytesIO()
-                    df_verbring_export.to_excel(excel_buffer, index=True)  # behält MultiIndex
+                    df_verbring_export.to_excel(excel_buffer, index=True)
                     excel_buffer.seek(0)
-            
+        
                     st.download_button(
                         label="📥 WSA Verbringtabelle als .xlsx speichern",
                         data=excel_buffer,
@@ -1630,13 +1613,11 @@ if uploaded_files:
                     )
             else:
                 st.info("Bitte zuerst Daten laden.")
- 
 # ======================================================================================================================
 # TAB 6 – Numerische Auswertung Umlaufdaten: Panel-Templates für visuelle Darstellung
 # ======================================================================================================================
 
-        
-        with tab6:
+        elif selected_tab == "Debug":
             if umlauf_auswahl != "Alle" and row is not None:
 
                 # ----------------------------------------------------------------------------------------------------------------------
@@ -1743,6 +1724,19 @@ if uploaded_files:
                         ])
                     
                         st.dataframe(werte_tabelle, use_container_width=True, hide_index=True)
+                        st.dataframe(umlauf_info_df)
+                     
+                    # ----------------------------------------------------------------------------------------------------------------------
+                    # 📊 Vorschau: Rohdaten
+                    # ----------------------------------------------------------------------------------------------------------------------                        
+                    with st.expander("🔍 Vorschau: Rohdaten (erste 20 Zeilen)", expanded=False):
+                        if not df.empty:
+                            st.caption(f"📄 Zeige die ersten 20 von insgesamt {len(df)} Zeilen")
+                            st.dataframe(df.head(20), use_container_width=True)
+                        else:
+                            st.info("ℹ️ Noch keine Daten geladen.")
+                     
+                     
                         
                     # ----------------------------------------------------------------------------------------------------------------------
                     # 📊 Debug-Infos (ausklappbar) – Verweilzeiten pro Polygon
@@ -1864,12 +1858,9 @@ if uploaded_files:
                         else:
                             st.warning("⚠️ AMOB-Dauer wurde nicht berechnet oder ist `None`.")
 
-
- 
-
-                    # ----------------------------------------------------------------------------------------------------------------------
+                    # -----------------------------------------------------------------------------------------------------------------
                     # 📊 Dataframe
-                    # ----------------------------------------------------------------------------------------------------------------------                     
+                    # -----------------------------------------------------------------------------------------------------------------            
                     with st.expander("🧪 Debug: Spalten im DataFrame"):
                         st.write("🧾 Spalten im DataFrame:", df.columns.tolist())
                          # Debug-Tabelle: Übersicht Dichtewerte je Umlauf
@@ -1884,6 +1875,7 @@ if uploaded_files:
   
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
+            
 
 #=====================================================================================
 
@@ -1891,5 +1883,5 @@ if uploaded_files:
 
 
 elif not uploaded_files:
-    st.info("Bitte lade mindestens eine Datei hoch.")
+    st.info("Bitte lade mindestens eine Datei mit Baggerinformationen im Format MoNa- oder HPA hoch.")
 

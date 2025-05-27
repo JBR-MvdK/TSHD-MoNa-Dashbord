@@ -24,15 +24,18 @@ def show_gesamtzeiten_dynamisch(summe_leerfahrt, summe_baggern, summe_vollfahrt,
     }
     formatter = format_mapper.get(zeitformat, to_hhmmss)
 
-    # 1. Zeile: gewähltes Format
-    summen_format1 = [formatter(d) for d in [summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf]]
-    # 2. Zeile: zusätzlich immer in Dezimalstunden
+    # ✅ panels brauchen hh:mm:ss (für Anzeige in den KPI-Panels)
+    summen_format1 = [to_hhmmss(d) for d in [summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf]]
+
+    # 📊 Zeile 2: immer zusätzlich in Dezimalstunden
     summen_stunden = [to_dezimalstunden(d) for d in [summe_leerfahrt, summe_baggern, summe_vollfahrt, summe_verklapp, summe_umlauf]]
 
     columns = ["Leerfahrt", "Baggern", "Vollfahrt", "Verklappen", "Umlauf"]
     gesamtzeiten_df = pd.DataFrame([summen_format1, summen_stunden], columns=columns)
-    gesamtzeiten_df.index = ["", ""]
+    gesamtzeiten_df.index = ["", ""]  # ohne Indexbeschriftung
+
     return gesamtzeiten_df
+
 
 
 # -----------------------------------------------------------------------------------------------------
@@ -118,89 +121,73 @@ def berechne_gesamtzeiten(dauer_leerfahrt_list, dauer_baggern_list, dauer_vollfa
         "verklapp":  sum(dauer_verklapp_list, pd.Timedelta(0)),
         "umlauf":    sum(dauer_umlauf_list, pd.Timedelta(0))
     }
+
 # -----------------------------------------------------------------------------------------------------
 # 📈 TDS-Tabelle erzeugen (inkl. manuelle Eingaben und Berechnungen)
 # -----------------------------------------------------------------------------------------------------
+
 def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
-    daten = []          # Formatierte Werte mit Einheiten (für Anzeige)
-    daten_export = []   # Rohdaten (für Excel-Export ohne Formatierung)
-    kumuliert_feststoff = 0  # Zwischenspeicher für aufsummiertes Feststoffvolumen
+    # 📊 Ergebnislisten initialisieren
+    daten = []          # Für Anzeige in der UI (formatiert)
+    daten_export = []   # Für CSV-Export (Rohdaten)
+    kumuliert_abrechnung = 0  # Zwischensumme für abrechnungsrelevantes Volumen
 
-    # 📊 Mittlere Gemischdichte pro Umlauf berechnen
+    # 📉 Durchschnittliche Gemischdichte je Umlauf berechnen (nur informativ)
     df_mittelwerte = berechne_mittlere_gemischdichte(df, umlauf_info_df, debug=False)
-        
-    
+
+    # 📥 Manuelle Feststoffdaten aus Session holen (zuvor per Editor geladen/eingegeben)
     df_manuell = st.session_state.get("df_manuell", pd.DataFrame())
+    # Optional: Berechnung entfernen, da Berechnung jetzt direkt in berechne_umlauf_auswertung integriert ist
+    # df_manuell = berechne_feststoff_manuell(df_manuell)
 
-    # ⏰ Timestamp-Spalte normieren (falls z.B. aus CSV/Excel eingelesen)
-    if not df_manuell.empty:
-        if not pd.api.types.is_datetime64_any_dtype(df_manuell["timestamp_beginn_baggern"]):
-            df_manuell["timestamp_beginn_baggern"] = pd.to_datetime(df_manuell["timestamp_beginn_baggern"], errors="coerce")
-        if df_manuell["timestamp_beginn_baggern"].dt.tz is None:
-            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_localize("UTC", ambiguous="NaT")
-        else:
-            df_manuell["timestamp_beginn_baggern"] = df_manuell["timestamp_beginn_baggern"].dt.tz_convert("UTC")
-    
-    kumuliert_abrechnung = 0
-    
-    # 🔁 Umläufe durchlaufen
+    # 💾 Wieder speichern – falls andere Module darauf zugreifen
+    st.session_state["df_manuell"] = df_manuell
+
+    # ➕ Neue kumulierte Summe für Feststoffmengen
+    kumuliert_feststoff_summe = 0.0
+
+    # 🔁 Jeder einzelne Umlauf wird nun ausgewertet
     for _, row in umlauf_info_df.iterrows():
-        feststoff_manuell, proz = None, None
-        row_time = pd.to_datetime(row.get("Start Baggern"), utc=True)
-        
-
-        # 🧩 Mittlere Gemischdichte für diesen Umlauf heraussuchen
-        #mitteldichte = df_mittelwerte[df_mittelwerte["Umlauf"] == row["Umlauf"]]["Mittlere_Gemischdichte"]
-        #mitteldichte = mitteldichte.iloc[0] if not mitteldichte.empty else None
-
-
-        # 🧩 Ortsdichte aus df_manuell holen (manuelle Eingabe)
-        ortsdichte = None
-        if not df_manuell.empty:
-            treffer = df_manuell[df_manuell["timestamp_beginn_baggern"] == row_time]
-            if not treffer.empty:
-                feststoff_manuell = treffer.iloc[0].get("feststoff")
-                proz = treffer.iloc[0].get("proz_wert")
-                ortsdichte = treffer.iloc[0].get("Ortsdichte")
-
         try:
-            # Kontext: Zeitraum rund um den Umlauf
+            # 🕒 Kontextzeitfenster erweitern (15 min Puffer vorne & hinten)
             t_start = pd.to_datetime(row["Start Leerfahrt"], utc=True) - pd.Timedelta(minutes=15)
             t_ende = pd.to_datetime(row["Ende"], utc=True) + pd.Timedelta(minutes=15)
             df_context = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)].copy()
 
-            # Berechnung der TDS-Werte
-            tds, werte, _, *_ = berechne_umlauf_auswertung(
-                df_context, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code
+            # 📊 Zentrale Berechnung des Umlaufs – TDS + manuelle Daten bereits integriert
+            tds, werte, *_, dichtewerte, _ = berechne_umlauf_auswertung(
+                df_context, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code,
+                df_manuell=df_manuell
             )
 
-            # 🌊 Basiswerte extrahieren
+            # 🧾 Manuelle Werte aus dem zurückgegebenen tds-Dictionary holen
+            feststoff_manuell = tds.get("feststoff_manuell")
+            proz = tds.get("proz")
+            voll_vol = tds.get("voll_volumen")
+            feststoff_gemisch = tds.get("feststoff_gemisch")
+            feststoff_volumen = tds.get("feststoff_gesamt")
+            gemisch = voll_vol - feststoff_manuell if voll_vol and feststoff_manuell else None
+
+            # ➕ Kumulierte Summe berechnen (wird manuell aufsummiert)
+            if pd.notna(feststoff_volumen):
+                kumuliert_feststoff_summe += feststoff_volumen
+            kumuliert_feststoff = kumuliert_feststoff_summe
+
+            # 🔢 Weitere technische Kennwerte
+            ortsdichte = dichtewerte.get("Ortsdichte")
             leer_masse = werte.get("Verdraengung Start")
             voll_masse = werte.get("Verdraengung Ende")
             diff_masse = voll_masse - leer_masse if None not in [leer_masse, voll_masse] else None
-
             leer_vol = werte.get("Ladungsvolumen Start")
             voll_vol = werte.get("Ladungsvolumen Ende")
             diff_vol = voll_vol - leer_vol if None not in [leer_vol, voll_vol] else None
 
-            # ➕ Manuelle Ergänzung durch Eingabewerte
-            if feststoff_manuell is not None and proz is not None and voll_vol is not None:
-                gemisch = voll_vol - feststoff_manuell
-                feststoff_gemisch = gemisch * (proz / 100)
-                feststoff_volumen = feststoff_manuell + feststoff_gemisch
-            else:
-                gemisch = feststoff_gemisch = feststoff_volumen = None
-
-            if feststoff_volumen is not None:
-                kumuliert_feststoff += feststoff_volumen
-                
+            # 💰 Abrechnungsvolumen kumulieren
             abrechnungsvolumen = tds.get("abrechnungsvolumen")
             if abrechnungsvolumen is not None:
                 kumuliert_abrechnung += abrechnungsvolumen
 
-                
-
-            # 📋 Darstellungstabelle (mit Einheiten + Formatierung)
+            # 📋 Formatierte Zeile für UI
             zeile = [
                 row["Umlauf"],
                 format_de(leer_masse, 0) + " t",
@@ -215,48 +202,47 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
                 format_de(tds.get("feststoffvolumen"), 0) + " m³",
                 format_de(tds.get("feststoffmasse"), 0) + " t",
                 format_de(tds.get("abrechnungsfaktor"), 3) if tds.get("abrechnungsfaktor") is not None else "-",
-                format_de(tds.get("abrechnungsvolumen"), 0) + " m³" if tds.get("abrechnungsvolumen") is not None else "-",
-                format_de(kumuliert_abrechnung, 0) + " m³" if kumuliert_abrechnung else "-",
+                format_de(abrechnungsvolumen, 0) + " m³" if abrechnungsvolumen else "-",
+                format_de(kumuliert_abrechnung, 0) + " m³",
                 format_de(feststoff_manuell, 0) + " m³" if feststoff_manuell else "-",
                 format_de(gemisch, 0) + " m³" if gemisch else "-",
                 format_de(proz, 1) + " %" if proz else "-",
                 format_de(feststoff_gemisch, 0) + " m³" if feststoff_gemisch else "-",
                 format_de(feststoff_volumen, 0) + " m³" if feststoff_volumen else "-",
-                format_de(kumuliert_feststoff, 0) + " m³" if kumuliert_feststoff else "-"
+                format_de(kumuliert_feststoff, 0) + " m³"
             ]
-        except Exception:
-            # Fehlerhafte Zeile abfangen
-            zeile = [row["Umlauf"]] + ["-"] * 17
 
+            # 📤 Export-Zeile (Rohdaten, ohne Formatierung)
+            zeile_export = [
+                row["Umlauf"], leer_masse, voll_masse, diff_masse,
+                leer_vol, voll_vol, diff_vol,
+                tds.get("ladungsdichte"),
+                ortsdichte,
+                tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
+                tds.get("feststoffvolumen"),
+                tds.get("feststoffmasse"),
+                tds.get("abrechnungsfaktor"),
+                abrechnungsvolumen,
+                kumuliert_abrechnung,
+                feststoff_manuell,
+                gemisch,
+                proz,
+                feststoff_gemisch,
+                feststoff_volumen,
+                kumuliert_feststoff
+            ]
+
+        except Exception as e:
+            # ❌ Fehlerbehandlung für einzelne Umläufe (z. B. fehlende Daten)
+            st.error(f"❌ Fehler bei Umlauf {row.get('Umlauf')}: {e}")
+            zeile = [row["Umlauf"]] + ["-"] * 20
+            zeile_export = [row["Umlauf"]] + [None] * 20
+
+        # ➕ Ergebnisse zur Gesamtliste hinzufügen
         daten.append(zeile)
-
-        # Exportzeile mit reinen Werten (für Excel)
-        zeile_export = [
-            row["Umlauf"],
-            leer_masse,
-            voll_masse,
-            diff_masse,
-            leer_vol,
-            voll_vol,
-            diff_vol,
-            tds.get("ladungsdichte"),
-            ortsdichte,
-            tds.get("feststoffkonzentration") * 100 if tds.get("feststoffkonzentration") is not None else None,
-            tds.get("feststoffvolumen"),
-            tds.get("feststoffmasse"),
-            tds.get("abrechnungsfaktor"),
-            tds.get("abrechnungsvolumen"),
-            kumuliert_abrechnung,
-            feststoff_manuell,
-            gemisch,
-            proz,
-            feststoff_gemisch,
-            feststoff_volumen,
-            kumuliert_feststoff
-        ]
         daten_export.append(zeile_export)
 
-    # Strukturierter MultiIndex für Anzeige und Export
+    # 🧾 Spaltenstruktur mit MultiIndex (für Anzeige & Export)
     spalten = pd.MultiIndex.from_tuples([
         ("Umlauf", "Nr."),
         ("Ladungsmasse", "leer"),
@@ -281,11 +267,12 @@ def erzeuge_tds_tabelle(df, umlauf_info_df, schiffsparameter, strategie, pf, pw,
         ("Feststoff", "Kumuliert")
     ])
 
-    # 🧾 Rückgabe: Anzeige- und Exporttabelle
+    # ✅ Rückgabe der fertigen Tabellen
     return (
         pd.DataFrame(daten, columns=spalten),
         pd.DataFrame(daten_export, columns=spalten)
     )
+
 
 
 # -----------------------------------------------------------------------------------------------------

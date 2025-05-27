@@ -243,6 +243,56 @@ def berechne_status_neu(df, umlauf_df):
     return df
 
 
-    
 
-   
+
+# === Funktion: mappe_umlaufnummer(...) ============================================================================
+def mappe_umlaufnummer(df: pd.DataFrame, umlauf_info_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ergänzt das DataFrame `df` um eine neue Spalte 'Umlauf_korrekt', 
+    die für jeden Datenpunkt die zugehörige Umlaufnummer aus `umlauf_info_df` einträgt.
+
+    Die Zuordnung basiert auf dem Zeitfenster 'Start Leerfahrt' bis 'Ende' je Umlauf.
+
+    Parameter:
+    ----------
+    df : pd.DataFrame
+        Der Haupt-Datensatz mit Zeitstempeln (Spalte: 'timestamp')
+
+    umlauf_info_df : pd.DataFrame
+        DataFrame mit den Zeitfenstern pro Umlauf (Spalten: 'Start Leerfahrt', 'Ende', 'Umlauf')
+
+    Rückgabe:
+    --------
+    pd.DataFrame
+        Das ursprüngliche df mit einer zusätzlichen Spalte 'Umlauf_korrekt'
+    """
+
+    # === Validierungsprüfungen (für sauberes Debugging) ===
+    if "timestamp" not in df.columns:
+        raise ValueError("❌ Spalte 'timestamp' fehlt im DataFrame `df`.")
+    
+    required_cols = {"Start Leerfahrt", "Ende", "Umlauf"}
+    if not required_cols.issubset(umlauf_info_df.columns):
+        raise ValueError("❌ `umlauf_info_df` muss die Spalten 'Start Leerfahrt', 'Ende' und 'Umlauf' enthalten.")
+
+    # === Initialisiere Zielspalte ===
+    df["Umlauf_korrekt"] = None
+
+    # === Zeilenweise Durchlauf: für jeden Umlauf ein Zeitfenster festlegen ===
+    for _, row in umlauf_info_df.iterrows():
+        try:
+            # Setze Zeitfenster mit expliziter Zeitzone (UTC)
+            start = pd.to_datetime(row["Start Leerfahrt"], utc=True)
+            ende = pd.to_datetime(row["Ende"], utc=True)
+            nummer = row["Umlauf"]
+
+            # Filtermaske: Alle Zeitstempel im Zeitfenster
+            mask = (df["timestamp"] >= start) & (df["timestamp"] <= ende)
+            df.loc[mask, "Umlauf_korrekt"] = nummer
+
+        except Exception as e:
+            print(f"⚠️ Fehler beim Verarbeiten von Umlauf {row.get('Umlauf', '?')}: {e}")
+
+    return df
+
+

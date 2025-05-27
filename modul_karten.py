@@ -87,33 +87,36 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
     
     # Tooltip bei Status 2: Tiefenanzeige
     # in modul_karten.py – innerhalb von plot_karte(...)
+
     def tooltip_text(row):
-        # Zeitstempel formatieren
         ts = convert_timestamp(row["timestamp"], zeitzone)
         zeit = ts.strftime("%d.%m.%Y %H:%M:%S") if ts else "-"
-        # gemessene Tiefe
         tiefe = row.get(tiefe_spalte)
-        # Solltiefe aus dem DataFrame
         solltiefe = row.get("Solltiefe_Aktuell")
+        umlauf = row.get("Umlauf_korrekt", "–")
         
-        # Tooltip-Basistexte
-        tooltip = f"🕒 {zeit} ({zeit_suffix})"
+        tooltip = f"🔁 Umlauf: {umlauf}"  # NEU    
+        tooltip += f"<br>🕒 {zeit} ({zeit_suffix})"
+
         if pd.notnull(tiefe):
             tooltip += f"<br>📉 Baggerkopftiefe: {tiefe:.2f} m"
-        # hier fügen wir die Solltiefe hinzu
         if pd.notnull(solltiefe):
             tooltip += f"<br>🎯 Solltiefe: {solltiefe:.2f} m"
+
         return tooltip
 
 
     # Tooltip bei allen anderen Status: Geschwindigkeit
     def tooltip_status1_3(row):
+        umlauf = row.get("Umlauf_korrekt", "–")
         ts = convert_timestamp(row["timestamp"], zeitzone)
         zeit = ts.strftime("%d.%m.%Y %H:%M:%S") if ts else "-"
         geschw = row.get("Geschwindigkeit", None)
-        tooltip = f"🕒 {zeit} ({zeit_suffix})"
+        tooltip = f"🔁 Umlauf: {umlauf}"  # NEU            
+        tooltip += f"<br>🕒 {zeit} ({zeit_suffix})"
         if pd.notnull(geschw):
             tooltip += f"<br>🚤 Geschwindigkeit: {geschw:.1f} kn"
+
         return tooltip
 
 
@@ -127,7 +130,6 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
             tooltips = segment_df.apply(tooltip_status1_3, axis=1)
             fig.add_trace(go.Scattermapbox(
                 lon=lons, lat=lats, mode='lines',
-                marker=dict(size=4, color='rgba(150, 150, 150, 0.7)'),
                 line=dict(width=1, color='rgba(150, 150, 150, 0.7)'),
                 text=tooltips, hoverinfo='text',
                 name='Status 1 (Leerfahrt)' if seg_id == 0 else None,
@@ -148,7 +150,7 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
                     fig.add_trace(go.Scattermapbox(
                         lon=lons, lat=lats, mode='lines+markers',
                         marker=dict(size=6, color='rgba(0, 102, 204, 0.8)'),
-                        line=dict(width=2, color='rgba(0, 102, 204, 0.8)'),
+                        line=dict(width=1, color='rgba(0, 102, 204, 0.8)'),
                         text=tooltips, hoverinfo='text',
                         name="Status 2 (Baggern, BB)" if seg_id == 0 else None,
                         showlegend=(seg_id == 0), legendgroup="status2bb"
@@ -178,7 +180,6 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
             tooltips = segment_df.apply(tooltip_status1_3, axis=1)
             fig.add_trace(go.Scattermapbox(
                 lon=lons, lat=lats, mode='lines',
-                marker=dict(size=5, color='rgba(0, 153, 76, 0.8)'),
                 line=dict(width=1, color='rgba(0, 153, 76, 0.8)'),
                 text=tooltips, hoverinfo='text',
                 name='Status 3 (Vollfahrt)' if seg_id == 0 else None,
@@ -198,7 +199,7 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
             fig.add_trace(go.Scattermapbox(
                 lon=lons, lat=lats, mode='lines+markers',
                 marker=dict(size=6, color='rgba(255, 140, 0, 0.8)'),
-                line=dict(width=2, color='rgba(255, 140, 0, 0.8)'),
+                line=dict(width=1, color='rgba(255, 140, 0, 0.8)'),
                 text=tooltips, hoverinfo='text',
                 name="Status 4/5/6 (Verbringen)" if seg_id == 0 else None,
                 showlegend=(seg_id == 0), legendgroup="status456"
@@ -227,9 +228,11 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
     # -------- Optional: Dichtepolygone (transparente Flächen) --------
     if dichte_polygone:
         for idx, p in enumerate(dichte_polygone):
+            if "polygon" not in p:
+                continue  # ➤ z. B. manuelle Werte ohne Geometrie
             if not p["polygon"].is_valid:
-                continue  # Ungültige Geometrie
-
+                continue  # ➤ Ungültige Geometrie überspringen
+    
             coords = list(p["polygon"].exterior.coords)
             lons, lats = zip(*coords)
             tooltip = (
@@ -245,8 +248,9 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
                 name="Dichtepolygone" if idx == 0 else None,
                 legendgroup="dichtepolygon", showlegend=(idx == 0),
                 text=[tooltip] * len(lons), hoverinfo="text",
-                visible="legendonly"  # 👈 Das sorgt dafür, dass die Ebene zunächst deaktiviert ist
+                visible="legendonly"
             ))
+
 
             
 

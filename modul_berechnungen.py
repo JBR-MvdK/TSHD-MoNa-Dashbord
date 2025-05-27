@@ -5,6 +5,7 @@ from modul_startend_strategie import berechne_start_endwerte
 from modul_hilfsfunktionen import sichere_dauer
 
 
+
 # ------------------------------------------------------------
 # 🧮 TDS-Berechnung basierend auf 4 Start/End-Werten
 # ------------------------------------------------------------
@@ -142,7 +143,10 @@ def berechne_amob_dauer(df, seite="BB"):
     return df_filtered[amob_col].sum()
 
 
-def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code):
+# ------------------------------------------------------------
+# 🧪 Hauptfunktion zur Auswertung eines Umlaufs
+# ------------------------------------------------------------
+def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code, df_manuell=None, nutze_schiffstrategie=True, nutze_gemischdichte=True):
 
     """
     Vollständige Auswertung eines Umlaufs:
@@ -151,13 +155,16 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     - Berechnet TDS-Kennzahlen (Volumen, Masse, Konzentration usw.)
     - Misst Strecken (Leerfahrt, Baggern, Verbringen)
     - Liefert formatierte Werte für UI
+    - Integriert manuelle Eingaben (Feststoff / Zentrifuge) aus df_manuell
     """
 
     # ------------------------------------------------------------
-    # 🕓 Zeitbereich definieren und sicherstellen, dass alles timezone-aware ist
+    # 🕓 Zeitbereich definieren (Start/Ende) + Zeitzonen prüfen
     # ------------------------------------------------------------
     t_start = pd.to_datetime(row["Start Leerfahrt"])
     t_ende = pd.to_datetime(row["Ende"])
+
+    # Sicherstellen, dass Zeitstempel Zeitzonen enthalten (UTC)
     if t_start.tzinfo is None:
         t_start = t_start.tz_localize("UTC")
     if t_ende.tzinfo is None:
@@ -165,28 +172,32 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     if df["timestamp"].dt.tz is None:
         df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
 
-    # 🔍 Filter: Zeitfenster des Umlaufs extrahieren
+    # 🔍 Eingrenzen der Daten auf das aktuelle Umlaufs-Zeitfenster
     df_umlauf = df[(df["timestamp"] >= t_start) & (df["timestamp"] <= t_ende)]
 
     # ------------------------------------------------------------
-    # 📍 Aktive Polygone extrahieren (für Info-Ausgabe)
+    # 📍 Aktive Polygone erfassen (für Analyse und Info-Zwecke)
     # ------------------------------------------------------------
+    # Baggergebiete (Status == 2)
     if "Polygon_Name" in df_umlauf.columns and "Status" in df_umlauf.columns:
         bagger_namen = df_umlauf[df_umlauf["Status"] == 2]["Polygon_Name"].dropna().unique()
     else:
         bagger_namen = []
 
+    # Verbringstellen (Status 4, 5, 6)
     if "Polygon_Name" in df_umlauf.columns and "Status" in df_umlauf.columns:
         verbring_namen = df_umlauf[df_umlauf["Status"].isin([4, 5, 6])]["Polygon_Name"].dropna().unique()
     else:
         verbring_namen = []
 
-
     # ------------------------------------------------------------
-    # 🔍 Start-/Endwerte nach gewählter Strategie ermitteln
+    # 🔍 Ermittlung von Start-/Endwerten nach gewählter Strategie
     # ------------------------------------------------------------
     if "Verdraengung" in df_umlauf.columns and "Ladungsvolumen" in df_umlauf.columns:
-        werte, debug_info = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df)
+        # Start-/Endwerte per Strategie berechnen (z. B. Median, Glättung)
+        werte, debug_info = berechne_start_endwerte(df_umlauf, strategie, df_gesamt=df, nutze_schiffstrategie=nutze_schiffstrategie, nutze_gemischdichte=nutze_gemischdichte)
+
+        # ⛴️ Aus den Werten TDS-Kennzahlen berechnen (z. B. Konzentration, Volumen, Masse)
         tds_werte = berechne_tds_aus_werte(
             werte.get("Verdraengung Start"),
             werte.get("Verdraengung Ende"),
@@ -195,12 +206,49 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
             pf, pw, pb
         )
     else:
+        # ❌ Fallback bei fehlenden Spalten
         werte = {
-            "Verdraengung Start": None, "Verdraengung Ende": None,
-            "Ladungsvolumen Start": None, "Ladungsvolumen Ende": None
+            "Verdraengung Start": None,
+            "Verdraengung Ende": None,
+            "Ladungsvolumen Start": None,
+            "Ladungsvolumen Ende": None
         }
         tds_werte = berechne_tds_aus_werte(None, None, None, None, pf, pw, pb)
         debug_info = ["⚠️ Spalten fehlen – keine Strategieauswertung möglich."]
+
+    # ------------------------------------------------------------------------------
+    # ➕ Manuelle Feststoffdaten (falls vorhanden) integrieren
+    # ------------------------------------------------------------------------------
+    feststoff = proz = voll_vol = feststoff_gemisch = gesamt = None
+
+    if df_manuell is not None:
+        try:
+            # 🕓 Passenden Datensatz im df_manuell anhand Startzeit Baggern finden
+            ts = pd.to_datetime(row["Start Baggern"], utc=True)
+            eintrag = df_manuell[df_manuell["timestamp_beginn_baggern"] == ts]
+
+            if not eintrag.empty:
+                eintrag = eintrag.iloc[0]
+                feststoff = eintrag.get("feststoff")
+                proz = eintrag.get("proz_wert")
+                voll_vol = werte.get("Ladungsvolumen Ende")
+
+                # 🔬 Berechnung: gemischtes Volumen, Zusatzvolumen, Gesamtfeststoff
+                if pd.notna(feststoff) and pd.notna(proz) and pd.notna(voll_vol):
+                    gemisch = voll_vol - feststoff
+                    feststoff_gemisch = gemisch * (proz / 100)
+                    gesamt = feststoff + feststoff_gemisch
+
+        except Exception as e:
+            st.warning(f"⚠️ Fehler bei manuellen Werten: {e}")
+
+    # 🔁 Ergänzung des TDS-Wert-Dictionaries um manuelle Eingaben
+    tds_werte["feststoff_manuell"] = feststoff
+    tds_werte["proz"] = proz
+    tds_werte["voll_volumen"] = voll_vol
+    tds_werte["feststoff_gemisch"] = feststoff_gemisch
+    tds_werte["feststoff_gesamt"] = gesamt
+
 
     # ------------------------------------------------------------
     # 📦 Basiswerte + Differenzen berechnen
@@ -256,64 +304,53 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     # ------------------------------------------------------------
     # 🧊 Dominante Dichtewerte ermitteln (nur bei Status_neu == "Baggern")
     # ------------------------------------------------------------
+    
     dichtewerte = {
         "Dichte_Polygon_Name": None,
         "Ortsdichte": None,
         "Ortsspezifisch": None,
-        "Mindichte": None
+        "Mindichte": None,
+        "Maxdichte": None
     }
-
-
-    # 🧩 Falls HPA-Methode aktiv, versuche aus den Polygon-Daten zu lesen
-    if st.session_state.get("bonus_methode") == "hpa":
-        polygone = st.session_state.get("dichte_polygone", [])
-        df_baggern = df_umlauf[df_umlauf["Status_neu"] == "Baggern"]
     
-        if not df_baggern.empty and "Dichte_Polygon_Name" in df_baggern.columns:
-            haeufigster_polygon = df_baggern["Dichte_Polygon_Name"].mode(dropna=True)
-            polygon_name = haeufigster_polygon.iloc[0] if not haeufigster_polygon.empty else None
+    alle_dichten = st.session_state.get("bonus_dichtewerte", [])
     
-            if polygon_name:
-                passendes = next((p for p in polygone if p.get("name") == polygon_name), None)
-                if passendes:
-                    dichtewerte = {
-                        "Dichte_Polygon_Name": polygon_name,
-                        "Ortsdichte": passendes.get("ortsdichte"),
-                        "Ortsspezifisch": passendes.get("ortspezifisch"),
-                        "Mindichte": passendes.get("mindichte"),
-                        "Maxdichte": passendes.get("maxdichte")
-                    }
-
-
-
-
-
+    # Aus Messdaten versuchen, den häufigsten Polygonnamen zu finden
     df_baggern = df_umlauf[df_umlauf[status_col] == "Baggern"]
-    if not df_baggern.empty:
-        for spalte in dichtewerte.keys():
-            if spalte in df_baggern.columns:
-                haeufigster = df_baggern[spalte].mode(dropna=True)
-                dichtewerte[spalte] = haeufigster.iloc[0] if not haeufigster.empty else None
+    polygon_name = None
+    if "Dichte_Polygon_Name" in df_baggern.columns:
+        haeufigster_polygon = df_baggern["Dichte_Polygon_Name"].mode(dropna=True)
+        polygon_name = haeufigster_polygon.iloc[0] if not haeufigster_polygon.empty else None
+    
+    # Passenden Dichtewert aus geladenen / manuell eingegebenen Daten wählen
+    if polygon_name:
+        eintrag = next((p for p in alle_dichten if p.get("name") == polygon_name), None)
+    else:
+        eintrag = alle_dichten[0] if alle_dichten else None
+    
+    # Dichtewerte einlesen (zentrale Quelle für HPA & MoNa)
+    if eintrag:
+        dichtewerte = {
+            "Dichte_Polygon_Name": eintrag.get("name", polygon_name or "manuell"),
+            "Ortsdichte": eintrag.get("ortsdichte"),
+            "Ortsspezifisch": eintrag.get("ortspezifisch"),
+            "Mindichte": eintrag.get("mindichte"),
+            "Maxdichte": eintrag.get("maxdichte")
+        }
+    
+    # 🧪 Optionales Debugging (auskommentieren bei Bedarf)
+    # st.write("📊 Dichtewerte (gültig):", dichtewerte)
+    bonus_methode = st.session_state.get("bonus_methode", "hpa")
 
     # ------------------------------------------------------------
     # 💶 Bonusabrechnung – zwei Methoden: HPA oder MoNa
     # ------------------------------------------------------------
-    bonus_methode = st.session_state.get("bonus_methode", "hpa")
-    if bonus_methode == "mona":
-        mona_werte = st.session_state.get("bonus_mona_werte", {})
-        dichtewerte.update({
-            "Dichte_Polygon_Name": "manuell",
-            "Ortsdichte": mona_werte.get("ortsdichte"),
-            "Ortsspezifisch": mona_werte.get("ortspezifisch"),
-            "Mindichte": mona_werte.get("mindichte"),
-            "Maxdichte": mona_werte.get("maxdichte")
-        })
-
     abrechnung = {
         "faktor": None,
         "volumen": None,
         "strecke": None
     }
+
 
     konzentration = tds_werte.get("feststoffkonzentration")
     ladungsdichte = tds_werte.get("ladungsdichte")
@@ -335,13 +372,14 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
             abrechnung["volumen"] = volumen_diff * faktor if volumen_diff else None
             abrechnung["strecke"] = strecken_summe * faktor if strecken_summe else None
 
+    
     elif bonus_methode == "mona":
-        mona_werte = st.session_state.get("bonus_mona_werte", {})
-        p_min = mona_werte.get("mindichte")
-        p_max = mona_werte.get("maxdichte")
+        p_min = dichtewerte.get("Mindichte")
+        p_max = dichtewerte.get("Maxdichte")
+        
         af_min = 0.85
         af_max = 1.15
-
+    
         if ladungsdichte is None or p_min is None or p_max is None:
             abrechnung["faktor"] = None
         else:
@@ -353,10 +391,11 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
                 maf = (af_max - af_min) / (p_max - p_min)
                 faktor = maf * (ladungsdichte - p_min) + af_min
                 faktor = min(max(faktor, af_min), af_max)
-
+    
             abrechnung["faktor"] = faktor
             abrechnung["volumen"] = volumen_diff * faktor if volumen_diff else None
             abrechnung["strecke"] = strecken_summe * faktor if strecken_summe else None
+
 
     # ------------------------------------------------------------
     # ⏱ Dauerwerte für UI (als Strings)

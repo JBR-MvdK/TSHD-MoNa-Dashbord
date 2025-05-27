@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from modul_hilfsfunktionen import format_time, sichere_dauer, format_de
 from modul_polygon_auswertung import berechne_punkte_und_zeit
 
@@ -118,6 +119,28 @@ status_panel_template_mit_strecke = """
 </div>
 """
 
+panel_template_dauer = """
+<div style="
+    background:#f7fafe;
+    border-radius: 16px;
+    padding: 14px 16px 10px 16px;
+    margin-bottom: 1.2rem;
+    min-width: 210px;
+    min-height: 85px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+">
+    <div style="font-size:1rem; color:#555; margin-bottom:3px;">{caption}</div>
+    <div style="font-size:2.1rem; font-weight:800; color:#222; line-height:1;">
+        {value}
+    </div>
+    <div style="font-size:0.95rem; color:#4e6980; margin-top:3px;">
+        <span style="font-weight:600;">hh:mm:ss:</span> {dauer_hms}<br>
+        <span style="font-weight:600;">Stunden:</span> {dauer_stunden}
+    </div>
+</div>
+"""
 
 
 # -------------------------------------------------------------------------------------------------
@@ -497,6 +520,61 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     color: #aa0000;'>
                     <strong>außerhalb</strong> – {ausserhalb_min} min
                 </div>""", unsafe_allow_html=True)
+
+
+
+
+
+
+def zeige_aufsummierte_dauer_panels(df_gesamt):
+    """
+    Zeigt aufaddierte Zeiten (Leerfahrt, Baggern, Vollfahrt, Verklappen, Umlauf) als Panels.
+    Erwartet df_gesamt mit 2 Zeilen:
+    - Zeile 0 = hh:mm:ss (z. B. "04:44:28")
+    - Zeile 1 = Stunden als String mit Komma & " h" (z. B. "4,741 h")
+    """
+    if df_gesamt.empty or df_gesamt.shape[0] < 2:
+        st.warning("⚠️ Es wurden nicht genügend Zeilen übergeben.")
+        return
+
+    zeile_hms = df_gesamt.iloc[0]
+    zeile_std = df_gesamt.iloc[1]
+
+    def format_dauer_panel(title, zeit_hms, zeit_std_raw):
+        # 🔹 Zeitwert "hh:mm:ss" in Sekunden
+        try:
+            td = pd.to_timedelta(zeit_hms)
+            dauer_min = int(td.total_seconds() // 60)
+            dauer_hms = str(td)
+        except:
+            dauer_min = 0
+            dauer_hms = "–"
+
+        # 🔹 Stundenwert: "4,741 h" → float
+        try:
+            zeit_std = float(str(zeit_std_raw).replace("h", "").replace(",", ".").strip())
+            zeit_std_disp = f"{zeit_std:.3f} h"
+        except:
+            zeit_std_disp = "–"
+
+        return panel_template.format(
+            caption=title,
+            value=f"{dauer_min:,}".replace(",", ".") + " min",
+
+            change_label1="hh:mm:ss:", change_value1=dauer_hms,
+            change_label2="Stunden:", change_value2=zeit_std_disp
+        )
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    col1.markdown(format_dauer_panel("Leerfahrt (∑)", zeile_hms["Leerfahrt"], zeile_std["Leerfahrt"]), unsafe_allow_html=True)
+    col2.markdown(format_dauer_panel("Baggern (∑)", zeile_hms["Baggern"], zeile_std["Baggern"]), unsafe_allow_html=True)
+    col3.markdown(format_dauer_panel("Vollfahrt (∑)", zeile_hms["Vollfahrt"], zeile_std["Vollfahrt"]), unsafe_allow_html=True)
+    col4.markdown(format_dauer_panel("Verklappen (∑)", zeile_hms["Verklappen"], zeile_std["Verklappen"]), unsafe_allow_html=True)
+    col5.markdown(format_dauer_panel("Umlauf (∑)", zeile_hms["Umlauf"], zeile_std["Umlauf"]), unsafe_allow_html=True)
+
+
+
 
 
 

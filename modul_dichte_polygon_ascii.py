@@ -33,56 +33,53 @@ def parse_dichte_polygone(txt_file, referenz_data=None, epsg_code=None):
     result = []  # Liste für zurückzugebende Polygondaten
 
     # 🔁 Gruppiere nach Polygon-Namen
+    # 🔁 Gruppiere nach Polygon-Namen
     for name, gruppe in df.groupby("name"):
-        punkte = list(zip(gruppe["rw"], gruppe["hw"]))  # Alle Eckpunkte für das Polygon
-
+        punkte_original = list(zip(gruppe["rw"], gruppe["hw"]))  # Speichere UTM-Koordinaten
+    
         # ❌ Ein Polygon braucht mindestens 3 Punkte
-        if len(punkte) < 3:
+        if len(punkte_original) < 3:
             continue
-
-        # 🔄 Falls gewünscht, Koordinaten in WGS84 umrechnen
-        if transformer:
-            punkte = [transformer.transform(x, y) for x, y in punkte]
-
+    
+        # 🔄 Falls gewünscht, Koordinaten in WGS84 umrechnen für Anzeige
+        punkte_fuer_polygon = [transformer.transform(x, y) for x, y in punkte_original] if transformer else punkte_original
+    
         # 🧱 Polygonobjekt erzeugen
-        polygon = Polygon(punkte)
+        polygon = Polygon(punkte_fuer_polygon)
         erste = gruppe.iloc[0]  # Referenzzeile für weitere Werte
-
+    
         # 📊 Dichtewerte aus der Datei (erste Zeile der Gruppe)
         ortsdichte = round(float(erste["ortsdichte"]), 2)
         ortsspez = float(erste.get("ortspezifisch", 0))
         mindichte = float(erste.get("mindichte", 0))
         maxdichte = float(erste["maxdichte"]) if "maxdichte" in erste and pd.notna(erste["maxdichte"]) else None
-
+    
         # 🧠 Fallback: Werte aus Referenzdaten ergänzen, falls in Datei 0 steht
         if ortsspez == 0 or mindichte == 0:
-            # Zugriff direkt oder verschachtelt (z. B. nach Profilnamen wie "HPA")
             lookup = referenz_data.get(str(ortsdichte)) or \
                      referenz_data.get("HPA", {}).get(str(ortsdichte))
-
-            # 📘 Wenn Lookup ein Dict ist (z. B. {"ortspezifisch": x, "mindichte": y})
             if isinstance(lookup, dict):
                 ortsspez = lookup.get("ortspezifisch", ortsspez)
                 mindichte = lookup.get("mindichte", mindichte)
                 if "maxdichte" in lookup:
                     maxdichte = lookup.get("maxdichte", maxdichte)
-
-            # 📘 Wenn Lookup ein Tupel/Liste ist (z. B. [x, y, z])
             elif isinstance(lookup, (list, tuple)):
                 if len(lookup) >= 2:
                     ortsspez, mindichte = lookup[:2]
                 if len(lookup) >= 3:
                     maxdichte = lookup[2]
-
+    
         # 📦 Zusammenstellen des Ergebnisobjekts für dieses Polygon
         result.append({
             "name": name.strip(),
             "polygon": polygon,
+            "punkte_original": list(zip(gruppe["rw"], gruppe["hw"])),
             "ortsdichte": ortsdichte,
             "ortspezifisch": ortsspez,
             "mindichte": mindichte,
-            "maxdichte": maxdichte  # ← optional, wenn vorhanden
+            "maxdichte": maxdichte
         })
+
 
     # ✅ Rückgabe der Polygonliste mit allen zugewiesenen Dichtewerten
     return result
