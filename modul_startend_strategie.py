@@ -125,11 +125,11 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
 
     if statuszeit_456_1 is None and not df.empty and df.iloc[0]["Status"] == 1:
         statuszeit_456_1 = df.iloc[0][zeit_col]
-        debug_info.append("⚠️ Kein 456→1 gefunden – erster Eintrag mit Status 1 als Fallback verwendet.")
+        debug_info.append(":material/warning: Kein 456→1 gefunden – erster Eintrag mit Status 1 als Fallback verwendet.")
 
-    debug_info.append(f"📍 Statuszeit 1→2: {statuszeit_1_2}")
-    debug_info.append(f"📍 Statuszeit 2→3: {statuszeit_2_3}")
-    debug_info.append(f"📍 Statuszeit 456→1: {statuszeit_456_1}")
+    debug_info.append(f":material/swap_horiz: Statuszeit 1→2: {statuszeit_1_2}")
+    debug_info.append(f":material/swap_horiz: Statuszeit 2→3: {statuszeit_2_3}")
+    debug_info.append(f":material/swap_horiz: Statuszeit 456→1: {statuszeit_456_1}")
 
     # ------------------------------------------------------------------------------------------------------------------
     # 🔧 Subfunktionen innerhalb der Hauptfunktion
@@ -141,16 +141,16 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         val = first_or_none(sub[col]) if col in sub.columns else None
         ts_out = first_index_or_none(sub[col])
         ts_out = sub.loc[ts_out, zeit_col] if ts_out in sub.index else None
-        debug_info.append(f"⚠️ {label}: Standardwert (exakter Statuszeitpunkt)")
+        debug_info.append(f":material/warning: {label}: Standardwert (exakter Statuszeitpunkt)")
         return val, ts_out
 
     def strategie_extremwert(df, art, ts_ref, vor, nach, col, zeit_col, debug_info, label):
         """Sucht Min/Max-Wert im definierten Zeitbereich um einen Referenzzeitpunkt."""
         if ts_ref is None:
-            debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
+            debug_info.append(f":material/warning: {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
             return None, None
         wert, ts = suche_extrem_zweizeitfenster(df, ts_ref, vor, nach, col, art, zeit_col)
-        debug_info.append(f"✅ {label}: {art} in {vor} vor bis {nach} nach Statuszeit")
+        debug_info.append(f":material/done: {label}: {art} in {vor} vor bis {nach} nach Statuszeit")
         return wert, ts
 
     def strategie_wert_vor_extremwert(df, art, ts_ref, vor, nach, col, zeit_col, debug_info, label):
@@ -158,7 +158,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         Gibt den Wert *vor dem letzten* Extremwert im Zeitfenster zurück.
         """
         if ts_ref is None:
-            debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
+            debug_info.append(f":material/warning: {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
             return None, None
     
         t_start = ts_ref - pd.Timedelta(vor)
@@ -166,7 +166,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         df_zeit = df[(df[zeit_col] >= t_start) & (df[zeit_col] <= t_ende)]
     
         if df_zeit.empty or col not in df_zeit.columns:
-            debug_info.append(f"⚠️ {label}: Kein gültiger Datenbereich.")
+            debug_info.append(f":material/warning: {label}: Kein gültiger Datenbereich.")
             return None, None
     
         extrem_val = df_zeit[col].max() if art == "max" else df_zeit[col].min()
@@ -180,13 +180,13 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         extrem_pos = idx_liste.index(letzter_extrem_idx)
     
         if extrem_pos == 0:
-            debug_info.append(f"⚠️ {label}: Kein Wert vor dem letzten Extremwert.")
+            debug_info.append(f":material/warning: {label}: Kein Wert vor dem letzten Extremwert.")
             return None, None
     
         vor_idx = idx_liste[extrem_pos - 1]
         ts = df_zeit.loc[vor_idx, zeit_col]
         val = df_zeit.loc[vor_idx, col]
-        debug_info.append(f"✅ {label}: Wert vor *letztem* {art} in {vor} vor bis {nach} nach Statuszeit")
+        debug_info.append(f":material/done: {label}: Wert vor *letztem* {art} in {vor} vor bis {nach} nach Statuszeit")
         return val, ts
 
 
@@ -195,7 +195,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         Sucht den letzten Maximalwert im Bereich [ts_ref, ts_ref + nach] und gibt den *numerisch unterschiedlichen* Wert davor zurück.
         """
         if ts_ref is None:
-            debug_info.append(f"⚠️ {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
+            debug_info.append(f":material/warning: {label}: Kein Statuszeitpunkt – Strategie nicht anwendbar.")
             return None, None
     
         t_start = ts_ref
@@ -203,7 +203,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         df_zeit = df[(df[zeit_col] >= t_start) & (df[zeit_col] <= t_ende)]
     
         if df_zeit.empty or col not in df_zeit.columns:
-            debug_info.append(f"⚠️ {label}: Kein gültiger Datenbereich.")
+            debug_info.append(f":material/warning: {label}: Kein gültiger Datenbereich.")
             return None, None
     
         extrem_val = df_zeit[col].max()
@@ -219,7 +219,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         try:
             pos_im_df = df_indices.index(letzter_extrem_idx)
         except ValueError:
-            debug_info.append(f"⚠️ {label}: Letzter Max-Index nicht im Gesamt-DF.")
+            debug_info.append(f":material/warning: {label}: Letzter Max-Index nicht im Gesamt-DF.")
             return None, None
     
         # Suche numerisch ungleichen Wert davor
@@ -227,10 +227,10 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
             val_davor = df.loc[df_indices[i], col]
             if pd.notna(val_davor) and val_davor != extrem_val:
                 ts = df.loc[df_indices[i], zeit_col]
-                debug_info.append(f"✅ {label}: Wert vor letztem Max (≠ Max) = {val_davor:.3f} @ {ts}")
+                debug_info.append(f":material/done: {label}: Wert vor letztem Max (≠ Max) = {val_davor:.3f} @ {ts}")
                 return val_davor, ts
     
-        debug_info.append(f"⚠️ {label}: Kein numerisch unterschiedlicher Wert vor letztem Maximum gefunden.")
+        debug_info.append(f":material/warning: {label}: Kein numerisch unterschiedlicher Wert vor letztem Maximum gefunden.")
         return None, None
 
 
@@ -245,19 +245,19 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         wechsler_idx = mask[mask].index.tolist()
     
         if not wechsler_idx:
-            debug_info.append(f"⚠️ {label}: Kein Statuswechsel {von}→{nach} gefunden.")
+            debug_info.append(f":material/warning: {label}: Kein Statuswechsel {von}→{nach} gefunden.")
             return None, None
     
         idx = wechsler_idx[0]
         davor_idx = idx - 1 if idx > 0 else None
     
         if davor_idx is None or davor_idx not in df.index:
-            debug_info.append(f"⚠️ {label}: Kein Datenpunkt vor dem Statuswechsel.")
+            debug_info.append(f":material/warning: {label}: Kein Datenpunkt vor dem Statuswechsel.")
             return None, None
     
         ts = df.loc[davor_idx, zeit_col]
         val = df.loc[davor_idx, col]
-        debug_info.append(f"✅ {label}: Wert direkt vor {von}→{nach}")
+        debug_info.append(f":material/done: {label}: Wert direkt vor {von}→{nach}")
         return val, ts
 
 
@@ -276,7 +276,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
             if not df_davor.empty and col in df_davor.columns:
                 val1 = df_davor[col].iloc[-1]
                 ts1 = df_davor[zeit_col].iloc[-1]
-                debug_info.append(f"🟦 {label}: Wert direkt vor 1→2 = {val1:.3f} @ {ts1}")
+                debug_info.append(f":material/play_arrow: {label}: Wert direkt vor 1→2 = {val1:.3f} @ {ts1}")
     
         # 2️⃣ Min-Wert in den ersten 5 Minuten mit Status_neu == Baggern
         df_bagg = df[(df["Status_neu"] == "Baggern") & (df[zeit_col] >= ts_ref)]
@@ -286,22 +286,22 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
             if not df_bagg_5min.empty and col in df_bagg_5min.columns:
                 val2 = df_bagg_5min[col].min()
                 ts2 = df_bagg_5min[df_bagg_5min[col] == val2][zeit_col].iloc[0]
-                debug_info.append(f"🟨 {label}: Min-Wert in Baggern (5min) = {val2:.3f} @ {ts2}")
+                debug_info.append(f":material/play_arrow: {label}: Min-Wert in Baggern (5min) = {val2:.3f} @ {ts2}")
     
         # 3️⃣ Vergleich
         if val1 is not None and val2 is not None:
             if val1 < val2:
-                debug_info.append(f"✅ {label}: Direkter Wert davor ist kleiner → {val1:.3f}")
+                debug_info.append(f":material/done: {label}: Direkter Wert davor ist kleiner → {val1:.3f}")
                 return val1, ts1
             else:
-                debug_info.append(f"✅ {label}: Min-Wert in Baggern ist kleiner → {val2:.3f}")
+                debug_info.append(f":material/done: {label}: Min-Wert in Baggern ist kleiner → {val2:.3f}")
                 return val2, ts2
         elif val1 is not None:
             return val1, ts1
         elif val2 is not None:
             return val2, ts2
     
-        debug_info.append(f"⚠️ {label}: Keine geeigneten Daten für Vergleich.")
+        debug_info.append(f":material/warning: {label}: Keine geeigneten Daten für Vergleich.")
         return None, None
 
 
@@ -322,7 +322,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         wert = first_or_none(sub["Verdraengung"])
         ts_idx = first_index_or_none(sub["Verdraengung"])
         ts = sub.loc[ts_idx, zeit_col] if ts_idx in sub.index else None
-        debug_info.append("✅ Verdraengung Start: direkt nach 456→1")
+        debug_info.append(":material/done: Verdraengung Start: direkt nach 456→1")
     elif strat == "ein_davor_1_2":
         wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Verdraengung", zeit_col, debug_info, "Verdraengung Start")
     elif strat == "min_vor_1_2_oder_min5":
@@ -371,19 +371,19 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         wert = first_or_none(sub["Ladungsvolumen"])
         ts_idx = first_index_or_none(sub["Ladungsvolumen"])
         ts = sub.loc[ts_idx, zeit_col] if ts_idx in sub.index else None
-        debug_info.append("✅ Ladungsvolumen Start: direkt nach 456→1")
+        debug_info.append(":material/done: Ladungsvolumen Start: direkt nach 456→1")
     elif strat == "erster_wert":
         wert = first_or_none(df["Ladungsvolumen"])
         ts_idx = first_index_or_none(df["Ladungsvolumen"])
         ts = df.loc[ts_idx, zeit_col] if ts_idx in df.index else None
-        debug_info.append("✅ Ladungsvolumen Start: erster Wert im Umlauf")
+        debug_info.append(":material/done: Ladungsvolumen Start: erster Wert im Umlauf")
     elif strat == "ein_davor_1_2":
         wert, ts = strategie_wert_vor_statuswechsel(df, 1, 2, "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
     elif strat == "min_vor_1_2_oder_min5":
         wert, ts = strategie_min_vor_1_2_oder_5min_min(df, statuszeit_1_2, "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Start")
     elif strat == "null":
         wert, ts = 0.0, None
-        debug_info.append("✅ Ladungsvolumen Start: null (0.0 m³)")
+        debug_info.append(":material/done: Ladungsvolumen Start: null (0.0 m³)")
     else:
         wert, ts = standardwert(df, statuszeit_1_2, "Ladungsvolumen", "Ladungsvolumen Start")
     result["Ladungsvolumen Start"] = wert
@@ -399,7 +399,7 @@ def berechne_start_endwerte(df, strategie=None, zeit_col="timestamp", df_gesamt=
         wert = first_or_none(sub["Ladungsvolumen"])
         ts_idx = first_index_or_none(sub["Ladungsvolumen"])
         ts = sub.loc[ts_idx, zeit_col] if ts_idx in sub.index else None
-        debug_info.append("✅ Ladungsvolumen Ende: erster Wert ≥ 2min nach 2→3")
+        debug_info.append(":material/done: Ladungsvolumen Ende: erster Wert ≥ 2min nach 2→3")
     elif strat == "max_in_2min_um_2_3":
         wert, ts = strategie_extremwert(df, "max", statuszeit_2_3, "2min", "2min", "Ladungsvolumen", zeit_col, debug_info, "Ladungsvolumen Ende")
         

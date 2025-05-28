@@ -50,7 +50,8 @@ def erkenne_koordinatensystem(df, st=None, status_element=None):
 
     # Nur wenn nicht erkannt → manuelle Auswahl im Expander (direkt in st.sidebar!)
     if not auto_erkannt:
-        with st.sidebar.expander("🌐 Koordinatensystem manuell wählen", expanded=False):
+        with st.sidebar.expander(":material/public: Koordinatensystem manuell wählen", expanded=False):
+
             proj_system = st.selectbox(
                 "Koordinatensystem auswählen", ["UTM", "Gauß-Krüger", "RD (Niederlande)"]
             )

@@ -1444,25 +1444,26 @@ if uploaded_files:
         
             if umlauf_auswahl != "Alle" and row is not None and tds_werte is not None:
 
-                # ----------------------------------------------------------------------------------------------------------------------
-                # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
-                # ----------------------------------------------------------------------------------------------------------------------
-                    zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
-                    
-                # ----------------------------------------------------------------------------------------------------------------------
-                # 📦 Baggerdaten als Diagramm
-                # ----------------------------------------------------------------------------------------------------------------------                    
-                    zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, werte, seite, plot_key="prozessgrafik_tab2")
-
-                # ----------------------------------------------------------------------------------------------------------------------
-                # 📦 Abrechnung pro Umlauf
-                # ----------------------------------------------------------------------------------------------------------------------
-                    zeige_bonus_abrechnung_panels(tds_werte, dichtewerte, abrechnung, pw, pf, panel_template)                
+            # ----------------------------------------------------------------------------------------------------------------------
+            # 📦 Baggerdaten anzeigen: Masse, Volumen, Feststoffe, Bodenvolumen, Dichten
+            # ----------------------------------------------------------------------------------------------------------------------
+                zeige_baggerwerte_panels(kennzahlen, tds_werte, zeitzone, pw, pf, pb, panel_template, dichte_panel_template)
                 
-                # ----------------------------------------------------------------------------------------------------------------------
-                # :material/table_chart: Zeitliche Phasen anzeigen (Leerfahrt, Baggern und Strecken)
-                # ----------------------------------------------------------------------------------------------------------------------
-                    zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
+            # ----------------------------------------------------------------------------------------------------------------------
+            # 📦 Baggerdaten als Diagramm
+            # ----------------------------------------------------------------------------------------------------------------------                    
+                zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, werte, seite, plot_key="prozessgrafik_tab2")
+
+
+            # ----------------------------------------------------------------------------------------------------------------------
+            # 📦 Abrechnung pro Umlauf
+            # ----------------------------------------------------------------------------------------------------------------------
+                zeige_bonus_abrechnung_panels(tds_werte, dichtewerte, abrechnung, pw, pf, panel_template)                
+            
+            # ----------------------------------------------------------------------------------------------------------------------
+            # :material/table_chart: Zeitliche Phasen anzeigen (Leerfahrt, Baggern und Strecken)
+            # ----------------------------------------------------------------------------------------------------------------------
+                zeige_statuszeiten_panels_mit_strecke(row, zeitzone, zeitformat, strecken=strecke_disp, panel_template=status_panel_template_mit_strecke)
 
             else:
                 st.info("Bitte einen konkreten Umlauf auswählen.")
@@ -1913,5 +1914,6 @@ if uploaded_files:
 
 
 elif not uploaded_files:
-    st.info("Bitte lade mindestens eine Datei mit Baggerinformationen im Format MoNa- oder HPA hoch.")
+    st.info(":material/upload_file: Bitte lade mindestens eine Datei mit Baggerinformationen im Format MoNa- oder HPA hoch.")
+
 

@@ -22,9 +22,9 @@ def zeige_layer_steuerung(umlauf_auswahl: str) -> tuple:
         - auto_modus_aktiv (True, wenn "Automatisch")
     """
 
-    with st.sidebar.expander("🗺️ Kartenlayer-Steuerung"):
+    with st.sidebar.expander(":material/layers: Kartenlayer-Steuerung"):
         # Interner Modusumschalter mit Reset-Logik
-        aktueller_modus = st.radio("Steuerungsmodus", ["Automatisch", "Manuell"], horizontal=True, key="layer_modus_radio")
+        aktueller_modus = st.radio(":material/toggle_on: Steuerungsmodus", ["Automatisch", "Manuell"], horizontal=True, key="layer_modus_radio")
         letzter_modus = st.session_state.get("layer_modus")
 
         if letzter_modus != aktueller_modus:
@@ -37,7 +37,7 @@ def zeige_layer_steuerung(umlauf_auswahl: str) -> tuple:
         layer_namen = ["Leerfahrt", "Baggern", "Vollfahrt", "Verbringen"]
 
         def fake_toggle(label: str, value: bool):
-            icon = "✅" if value else "❌"
+            icon = ":material/done:" if value else ":material/close:"
             st.markdown(f"{icon} {label}")
 
         col_label, col_b, col_v = st.columns([1.2, 1, 1])
