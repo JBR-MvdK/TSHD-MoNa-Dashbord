@@ -51,10 +51,12 @@ def export_html_to_pdf_playwright(html_content: str, umlauf: str = "") -> bytes:
 
 
 
+
+
 def export_html_to_pdf_pdfshift(html_content: str, api_key: str) -> bytes:
     """Wandelt HTML-Content via PDFShift (Cloud) in eine PDF-Datei um."""
     response = requests.post(
-        "https://api.pdfshift.io/v3/convert/html",
+        "https://api.pdfshift.io/v2/convert/",  # ✅ aktualisierte URL
         auth=(api_key, ""),  # PDFShift nutzt Basic Auth
         json={
             "source": html_content,
@@ -67,6 +69,8 @@ def export_html_to_pdf_pdfshift(html_content: str, api_key: str) -> bytes:
         return response.content
     else:
         raise Exception(f"PDFShift Fehler: {response.status_code} – {response.text}")
+
+
 
 
 def dauer_min(row, start_key, end_key):

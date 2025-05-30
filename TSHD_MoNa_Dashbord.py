@@ -142,7 +142,7 @@ from modul_startend_strategie import STRATEGIE_REGISTRY
 # 🌐 Geokoordinaten-Transformation (z. B. UTM → WGS84) für Kartendarstellung
 from pyproj import Transformer
 
-from modul_pdf_export_playwright import export_html_to_pdf_playwright, generate_export_html
+from modul_pdf_export_playwright import export_html_to_pdf_playwright, generate_export_html, export_html_to_pdf_pdfshift
 
 
 # ============================================================================================
@@ -2107,24 +2107,20 @@ if uploaded_files:
                 )
 
 
-                def is_streamlit_cloud() -> bool:
-                    """Erkennt, ob die App in Streamlit Cloud läuft (statt lokal)."""
-                    return os.getenv("STREAMLIT_SERVER_HEADLESS", "false").lower() == "true"
 
-                # 📥 PDF-Datei via Playwright erzeugen
+
+                # 📥 PDF-Datei via PDFShift erzeugen (nur Cloud-tauglich)
+                
+                # PDFShift-API-Key aus den Secrets laden
+                api_key = st.secrets.get("PDFSHIFT_API_KEY")
+                if not api_key:
+                    st.error("Fehlender API-Key für PDFShift in den Streamlit Secrets.")
+                    st.stop()
+                
+                # PDF aus HTML generieren
                 umlauf = get_admin_value(df_admin, "Umlauf")
-                if is_streamlit_cloud():
-                    # PDFShift nur, wenn API-KEY vorhanden
-                    api_key = st.secrets.get("PDFSHIFT_API_KEY")
-                    if not api_key:
-                        st.error("Fehlender API-Key für PDFShift in den Streamlit Secrets.")
-                        st.stop()
-                    pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key)
-                else:
-                    pdf_bytes = export_html_to_pdf_playwright(html_export, umlauf=umlauf)
-
-
-        
+                pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key)
+                
                 # ⬇️ Download-Button anzeigen
                 st.download_button(
                     "📄 PDF herunterladen",
@@ -2132,6 +2128,7 @@ if uploaded_files:
                     file_name=f"TSHD_Report_Umlauf_{row['Umlauf']}.pdf",
                     mime="application/pdf"
                 )
+
             else:
                 st.info("Bitte einen einzelnen Umlauf auswählen.")
 
