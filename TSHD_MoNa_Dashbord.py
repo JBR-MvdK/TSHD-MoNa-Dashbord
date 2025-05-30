@@ -2105,10 +2105,24 @@ if uploaded_files:
                     df=df,
                     baggerfelder=baggerfelder
                 )
-        
+
+
+                def is_streamlit_cloud() -> bool:
+                    """Erkennt, ob die App in Streamlit Cloud läuft (statt lokal)."""
+                    return os.getenv("STREAMLIT_SERVER_HEADLESS", "false").lower() == "true"
+
                 # 📥 PDF-Datei via Playwright erzeugen
                 umlauf = get_admin_value(df_admin, "Umlauf")
-                pdf_bytes = export_html_to_pdf_playwright(html_export, umlauf=umlauf)
+                if is_streamlit_cloud():
+                    # PDFShift nur, wenn API-KEY vorhanden
+                    api_key = st.secrets.get("PDFSHIFT_API_KEY")
+                    if not api_key:
+                        st.error("Fehlender API-Key für PDFShift in den Streamlit Secrets.")
+                        st.stop()
+                    pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key)
+                else:
+                    pdf_bytes = export_html_to_pdf_playwright(html_export, umlauf=umlauf)
+
 
         
                 # ⬇️ Download-Button anzeigen

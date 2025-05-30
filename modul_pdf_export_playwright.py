@@ -1,6 +1,7 @@
 import pandas as pd
 import base64
 import os
+import requests  # Wichtig: sicherstellen, dass 'requests' in requirements.txt steht
 
 from playwright.sync_api import sync_playwright  # Für PDF-Export mit Chromium
 from modul_hilfsfunktionen import format_time, sichere_dauer, format_de, get_admin_value  # Hilfsfunktionen aus eigenem Modul
@@ -48,6 +49,24 @@ def export_html_to_pdf_playwright(html_content: str, umlauf: str = "") -> bytes:
         browser.close()
         return pdf_bytes
 
+
+
+def export_html_to_pdf_pdfshift(html_content: str, api_key: str) -> bytes:
+    """Wandelt HTML-Content via PDFShift (Cloud) in eine PDF-Datei um."""
+    response = requests.post(
+        "https://api.pdfshift.io/v3/convert/html",
+        auth=(api_key, ""),  # PDFShift nutzt Basic Auth
+        json={
+            "source": html_content,
+            "landscape": False,
+            "use_print": False
+        },
+    )
+
+    if response.status_code == 200:
+        return response.content
+    else:
+        raise Exception(f"PDFShift Fehler: {response.status_code} – {response.text}")
 
 
 def dauer_min(row, start_key, end_key):
