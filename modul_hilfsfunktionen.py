@@ -421,3 +421,12 @@ def make_polygon_cache_key(df, baggerfelder, dichte_polygone, epsg_code, seite, 
         solltiefe_slider
     )
     return hashlib.md5(str(key_data).encode()).hexdigest()
+    
+# --------------------------------------------------------------------------------------------------
+# 🔐 Adminwerte auslesen - einfacher
+# --------------------------------------------------------------------------------------------------    
+def get_admin_value(df_admin, feldname, default="-"):
+    zeile = df_admin[df_admin["Feld"] == feldname]
+    if not zeile.empty:
+        return zeile["Wert"].values[0]
+    return default    

@@ -521,11 +521,9 @@ def zeige_bagger_und_verbringfelder(bagger_namen, verbring_namen, df, baggerfeld
                     <strong>außerhalb</strong> – {ausserhalb_min} min
                 </div>""", unsafe_allow_html=True)
 
-
-
-
-
-
+# -------------------------------------------------------------------------------------------------
+# ⏱ zeige_aufsummierte_dauer_panels
+# -------------------------------------------------------------------------------------------------
 def zeige_aufsummierte_dauer_panels(df_gesamt):
     """
     Zeigt aufaddierte Zeiten (Leerfahrt, Baggern, Vollfahrt, Verklappen, Umlauf) als Panels.

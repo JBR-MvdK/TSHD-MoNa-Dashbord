@@ -7,6 +7,7 @@ import pytz            # Zeitzonen-Verarbeitung (z. B. UTC → Lokalzeit)
 import traceback       # Fehler-Stacktrace zur Analyse bei Exceptions
 import io              # Speicherpuffer für Dateioperationen (z. B. Excel-Export)
 from datetime import datetime, timedelta  # Zeitverarbeitung (z. B. Timestamps, Zeiträume)
+import plotly.io as pio
 
 # === :material/table_chart: UI & VISUALISIERUNG ===
 import plotly.graph_objects as go    # Plotly: interaktive Charts (Mapbox, Linien, Marker etc.)
@@ -71,7 +72,7 @@ from modul_hilfsfunktionen import (
     lade_schiffsparameter, plot_x, pruefe_werte_gegen_schiffsparameter,
     setze_schiff_manuell_wenn_notwendig, split_by_gap,
     to_dezimalstunden, to_dezimalminuten, to_hhmmss,
-    initialisiere_polygon_werte, make_polygon_cache_key
+    initialisiere_polygon_werte, make_polygon_cache_key, get_admin_value
 )
 
 # 🪟 Panels für Statuszeiten, Kennzahlen, Strecken, TDS ...
@@ -141,6 +142,9 @@ from modul_startend_strategie import STRATEGIE_REGISTRY
 # 🌐 Geokoordinaten-Transformation (z. B. UTM → WGS84) für Kartendarstellung
 from pyproj import Transformer
 
+from modul_pdf_export_playwright import export_html_to_pdf_playwright, generate_export_html
+
+
 # ============================================================================================
 # 🔵 Start der Streamlit App – Grundeinstellungen und Layout
 # ============================================================================================
@@ -160,35 +164,89 @@ st.sidebar.title(":material/settings: Datenimport | Einstellungen")
 
 
 # ============================================================================================
+# 🔵 ADMIN
+# ============================================================================================
+
+# Funktion zum Hinzufügen oder Aktualisieren von Werten
+def set_admin_value(feld, wert):
+    df_admin = st.session_state.get("df_admin", pd.DataFrame(columns=["Feld", "Wert"]))
+    df_admin = df_admin[df_admin["Feld"] != feld]  # Entferne ggf. alten Eintrag
+    neue_zeile = pd.DataFrame([{"Feld": feld, "Wert": wert}])
+    st.session_state["df_admin"] = pd.concat([df_admin, neue_zeile], ignore_index=True)
+
+# Kundenliste vorbereiten
+kunden_json_path = "kunden.json"
+try:
+    with open(kunden_json_path, "r", encoding="utf-8") as f:
+        kundenliste = json.load(f)
+except Exception:
+    kundenliste = ["Kunde A", "Kunde B", "Kunde C"]
+
+# Session-State für Admin-Daten initialisieren
+if "df_admin" not in st.session_state:
+    st.session_state["df_admin"] = pd.DataFrame(columns=["Feld", "Wert"])
+
+# 👉 Zugriff immer verfügbar machen
+df_admin = st.session_state.get("df_admin", pd.DataFrame(columns=["Feld", "Wert"]))
+
+# Eingabemaske im Expander
+with st.sidebar.expander(":material/assignment: Administrative Projektdaten", expanded=False):
+    auftragnehmer = st.selectbox("Auftragnehmer", [ "Meyer van der Kamp", "van der Kamp"])
+    kunde = st.selectbox("Kunde", kundenliste)
+    auftragsnummer = st.text_input("Auftragsnummer")
+
+    if st.button(":material/check_circle: Übernehmen"):
+        set_admin_value("Auftragnehmer", auftragnehmer)
+        set_admin_value("Kunde", kunde)
+        set_admin_value("Auftragsnummer", auftragsnummer)
+        st.success("Projektdaten gespeichert.")
+        st.rerun()
+
+
+    if not df_admin.empty:
+        st.markdown("### 🔎 Aktuelle Projektdaten")
+        st.dataframe(
+            df_admin.reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True
+        )
+
+
+# ============================================================================================
 # 🔵 Datei-Upload – Auswahl und automatisches Format-Erkennung (MoNa oder HPA)
 # ============================================================================================
 
-# 📦 Eingabemaske zum Hochladen von Baggerdatendateien (.txt)
 with st.sidebar.expander(":material/upload_file: Dateien hochladen / auswählen", expanded=True):
 
+    # 📂 Upload-Feld
     uploaded_files = st.file_uploader(
-        "Datendateien (.txt) auswählen",           # Benutzerhinweis
-        type=["txt"],                              # Nur Textdateien zulassen
-        accept_multiple_files=True,                # Mehrfach-Upload erlauben
-        key="daten_upload"                         # Eindeutiger Schlüssel für Streamlit-Session
+        "Datendateien (.txt) auswählen",
+        type=["txt"],
+        accept_multiple_files=True,
+        key="daten_upload"
     )
-
-    # ⏳ Platzhalter für dynamischen Upload-Status (z. B. "Erfolgreich geladen", Fehlermeldung etc.)
     upload_status = st.empty()
+    datenformat = None
 
-    datenformat = None  # 🧮 Initiale Variable zur Erkennung des Datenformats
-
+    # 🔄 Wenn neue Dateien hochgeladen wurden → speichern
     if uploaded_files:
-        # :material/search: Versuche das Format automatisch zu erkennen (z. B. anhand von Spaltenüberschriften)
+        st.session_state["uploaded_files"] = uploaded_files
         datenformat = erkenne_datenformat(uploaded_files)
 
-        # :material/done: Erfolgreich erkanntes Format anzeigen
-        if datenformat in ["MoNa", "HPA"]:
-            st.info(f":material/info: Erkanntes Datenformat: **{datenformat}**")
-        else:
-            # :material/warning: Warnung und manuelle Auswahl anbieten, wenn Format nicht erkannt werden konnte
-            st.warning(":material/help: Format konnte nicht eindeutig erkannt werden.")
-            # datenformat = st.radio(":material/refresh: Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
+    # 📂 Wenn keine neuen, aber alte vorhanden → wiederverwenden
+    elif "uploaded_files" in st.session_state:
+        uploaded_files = st.session_state["uploaded_files"]
+        datenformat = erkenne_datenformat(uploaded_files)
+
+    # ✅ Format erfolgreich erkannt
+    if datenformat in ["MoNa", "HPA"]:
+        st.info(f":material/info: Erkanntes Datenformat: **{datenformat}**")
+
+    # ⚠️ Format nicht erkannt – manuelle Auswahl vorschlagen
+    elif uploaded_files:
+        st.warning(":material/help: Format konnte nicht eindeutig erkannt werden.")
+        datenformat = st.radio(":material/refresh: Format manuell wählen:", ["MoNa", "HPA"], horizontal=True)
+
 
 
 # ============================================================================================
@@ -458,7 +516,9 @@ with st.sidebar.expander(":material/settings: Setup – Berechnungen"):
         value=True,
         help="Wenn aktiviert, werden gespeicherte Strategien aus der Schiffsparameterdatei übernommen."
     )
-
+    validiere_verbring_start = st.toggle("Verklappung validieren (Fehlstarts vermeiden)", value=True)
+    verbring_ende_smart = st.toggle("Verbring-Ende dynamisch erkennen (statt letztem Status)", value=True)
+   
 # Platzhalter für Erkennungsinfo Koordinatensystem
 koordsys_status = st.sidebar.empty()
 
@@ -569,6 +629,7 @@ if uploaded_files:
             if fehlerhafte:
                 for spalte, anzahl in fehlerhafte:
                     st.warning(f":material/warning: {anzahl} Werte in **{spalte}** außerhalb gültiger Grenzen für **{schiff}** – wurden entfernt.")
+        
 
 #============================================================================================
 # 🔵 # 📋 Schiffsparameter bearbeiten und speichern
@@ -698,6 +759,7 @@ if uploaded_files:
             strategie = schiffsparameter.get(schiff, {}).get("StartEndStrategie", {})
 
 
+            set_admin_value("Schiff", schiff)
 #============================================================================================
 # 🔵 Filterleiste und Grundeinstellungen
 #============================================================================================
@@ -727,7 +789,7 @@ if uploaded_files:
             seite=seite,
             dichte_grenze=dichte_grenze,
             rueckblick_minute=rueckblick_minute,
-            min_vollfahrt_dauer_min=min_vollfahrt_dauer_min
+            min_vollfahrt_dauer_min=min_vollfahrt_dauer_min,
         )
         
         # 🧪 Kopie zur späteren parallelen Verwendung
@@ -753,6 +815,9 @@ if uploaded_files:
         # :material/loop: 4. Auswahlbox: Welcher einzelne Umlauf soll betrachtet werden?
         # ------------------------------------------------------------------------------------------------
         
+        def speichere_umlauf_admin():
+            set_admin_value("Umlauf", st.session_state["umlauf_auswahl"])
+
         # 💡 Session-Reset für Umlaufauswahl, wenn Tab "TDS-Tabellen" aktiv ist
         if (
             "tab_auswahl" in st.session_state and 
@@ -787,10 +852,11 @@ if uploaded_files:
                 ":material/loop: Umlauf auswählen",
                 options=umlauf_options,
                 index=selected_index,
-                key="umlauf_auswahl"
+                key="umlauf_auswahl",
+                on_change=speichere_umlauf_admin
             )
-
-        
+            # (Optional fallback – wird fast nie gebraucht)
+            set_admin_value("Umlauf", st.session_state["umlauf_auswahl"])
         # ------------------------------------------------------------------------------------------------
         # ⏱️ 5. Formatierung für Zeitwerte: klassisch oder dezimal
         # ------------------------------------------------------------------------------------------------
@@ -1206,7 +1272,7 @@ if uploaded_files:
                 df, row, schiffsparameter, strategie, pf, pw, pb, zeitformat, epsg_code,
                 df_manuell=st.session_state.get("df_manuell"),
                 nutze_schiffstrategie=nutze_schiffstrategie,
-                nutze_gemischdichte=nutze_gemischdichte  # ⬅️ das ist neu!
+                nutze_gemischdichte=nutze_gemischdichte
             )
 
         
@@ -1223,7 +1289,6 @@ if uploaded_files:
             bagger_namen = verbring_namen = []
             amob_dauer = 0.0
             dichtewerte = abrechnung = {}
-
 
 # ============================================================================================
 # 🎨 HTML-Styling für KPI-Panel
@@ -1254,7 +1319,10 @@ if uploaded_files:
             }
         </style>
         """, unsafe_allow_html=True)
-        
+
+# ============================================================================================
+
+  
         
 # ============================================================================================
 # 🌐 Karten-Transformer vorbereiten (EPSG → WGS84)
@@ -1283,7 +1351,8 @@ if uploaded_files:
             "Tiefenprofil": "vertical_align_bottom",
             "Umlauftabelle": "table_chart",
             "TDS-Tabellen": "fact_check",
-            "Debug": "build"
+            "Debug": "build",
+            "Export":"download"
         }
         
         # Vorauswahl bei erstem Laden
@@ -1383,7 +1452,8 @@ if uploaded_files:
                     show_status1=show_status1_b,
                     show_status2=show_status2_b,
                     show_status3=show_status3_b,
-                    show_status456=show_status456_b
+                    show_status456=show_status456_b,
+                    return_fig=True
                 )
         
                 if show_status2_b and not df_status2.empty:
@@ -1393,6 +1463,7 @@ if uploaded_files:
                     st.info("Keine Daten mit Status 2 verfügbar.")
         
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_baggerstelle")
+
         
             # --------------------------------------------------------------------------------------------------------------------------
             # 🟥 Rechte Karte: Status 4/5/6 – Verbringstelle
@@ -1411,7 +1482,8 @@ if uploaded_files:
                     show_status1=show_status1_v,
                     show_status2=show_status2_v,
                     show_status3=show_status3_v,
-                    show_status456=show_status456_v
+                    show_status456=show_status456_v,
+                    return_fig=True
                 )
         
                 if show_status456_v and not df_456.empty:
@@ -1421,7 +1493,7 @@ if uploaded_files:
                     st.info("Keine Daten mit Status 4, 5 oder 6 verfügbar.")
         
                 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True}, key="karte_verbringstelle")
-        
+
             # --------------------------------------------------------------------------------------------------------------------------
             # 📏 Streckenanzeige (sofern Kennzahlen vorhanden)
             # --------------------------------------------------------------------------------------------------------------------------
@@ -1452,9 +1524,9 @@ if uploaded_files:
             # ----------------------------------------------------------------------------------------------------------------------
             # 📦 Baggerdaten als Diagramm
             # ----------------------------------------------------------------------------------------------------------------------                    
+                # Anzeige in der UI
                 zeige_prozessgrafik_tab(df_context, zeitzone, row, schiffsparameter, schiff, werte, seite, plot_key="prozessgrafik_tab2")
-
-
+                
             # ----------------------------------------------------------------------------------------------------------------------
             # 📦 Abrechnung pro Umlauf
             # ----------------------------------------------------------------------------------------------------------------------
@@ -1902,13 +1974,153 @@ if uploaded_files:
                     with st.expander(":material/table_chart: Debug: Abrechnungsfaktor", expanded=False):
                         st.write(":material/receipt_long: Abrechnungsdaten:")
                         st.json(abrechnung)
-        
-  
-            else:
-                st.info("Bitte einen konkreten Umlauf auswählen.")
-            
 
-#=====================================================================================
+# ======================================================================================================================
+# TAB 7 – PDF Export
+# ======================================================================================================================
+
+        if selected_tab == "Export":
+        
+            # Nur möglich, wenn ein einzelner Umlauf ausgewählt wurde
+            if umlauf_auswahl != "Alle" and row is not None and not df_context.empty:
+        
+                # -----------------------------------------------------------------------------------------------------------------
+                # 📈 Prozessgrafik (z. B. Pumpendaten, Volumen, Dichteverläufe) exportieren
+                # -----------------------------------------------------------------------------------------------------------------
+                fig_prozess = zeige_prozessgrafik_tab(
+                    df_context, zeitzone, row, schiffsparameter, schiff, werte, seite, return_fig=True
+                )
+                if fig_prozess is not None:
+                    pio.write_image(fig_prozess, "prozessgrafik.png", format="png", width=1400, height=700, scale=2)
+                else:
+                    st.warning("Keine gültige Prozessgrafik vorhanden – vermutlich keine Daten für den gewählten Umlauf.")
+        
+                # ➕ Bestimme die Solltiefe für Export (aus Slider oder XML)
+                if solltiefe_wert is None:
+                    solltiefe_val = solltiefe_slider
+                else:
+                    try:
+                        solltiefe_val = float(solltiefe_wert)
+                    except ValueError:
+                        solltiefe_val = None
+        
+                # -----------------------------------------------------------------------------------------------------------------
+                # 📉 Grafik der Baggerkopftiefe (inkl. Toleranzen und Solltiefe) exportieren
+                # -----------------------------------------------------------------------------------------------------------------
+                fig_baggerkopftiefe = zeige_baggerkopftiefe_grafik(
+                    df,
+                    zeitzone,
+                    seite=seite,
+                    solltiefe=solltiefe_val,
+                    toleranz_oben=toleranz_oben,
+                    toleranz_unten=toleranz_unten,
+                    return_fig=True
+                )
+                if fig_baggerkopftiefe is not None:
+                    pio.write_image(fig_baggerkopftiefe, "baggerkopftiefe.png", format="png", width=1400, height=500, scale=2)
+                else:
+                    st.warning("Keine Baggerkopftiefe-Grafik generiert – eventuell keine Status-2-Daten vorhanden.")
+
+
+            # -----------------------------------------------------------------------------------------------------------------
+            # 🗺️ Kartenansicht Baggerstelle (Status 2) exportieren
+            # -----------------------------------------------------------------------------------------------------------------
+            # Karte für Baggerstelle
+            mapbox_center_baggern = {"lat": 53.5, "lon": 8.2}
+            df_baggern = df[df["Status_neu"] == "Baggern"]
+            mapbox_center_baggern, zoom_baggern = berechne_map_center_zoom(df_baggern, transformer)
+
+            
+            fig_karte_baggern, df_status2, _ = plot_karte(
+                df=df,
+                transformer=transformer,
+                seite=seite,
+                status2_label="Baggern",
+                tiefe_spalte="Abs_Tiefe_Kopf_BB",
+                mapbox_center=mapbox_center_baggern,
+                zeitzone=zeitzone,
+                zeit_suffix="UTC",
+                baggerfelder=baggerfelder,
+                dichte_polygone=st.session_state.get("dichte_polygone"),
+                show_status1=True,
+                show_status2=True,
+                show_status3=True,
+                show_status456=False,
+                return_fig=True
+            )
+            # ➕ Zoom manuell setzen (wie im Karte-Tab)
+            fig_karte_baggern.update_layout(mapbox_zoom=zoom_baggern)
+            
+            pio.write_image(fig_karte_baggern, "karte_baggern.png", format="png", width=900, height=600, scale=2)
+        
+            # -----------------------------------------------------------------------------------------------------------------
+            # 🗺️ Kartenansicht Verbringstelle (Status 4/5/6) exportieren
+            # -----------------------------------------------------------------------------------------------------------------
+            mapbox_center_verbringen = {"lat": 53.5, "lon": 8.2}
+            df_verbringen = df[df["Status_neu"] == "Verbringen"]
+            mapbox_center_verbringen, zoom_verbringen = berechne_map_center_zoom(df_verbringen, transformer)
+
+            fig_karte_verbringen, _, df_status456 = plot_karte(
+                df=df,
+                transformer=transformer,
+                seite=seite,
+                status2_label="Verbringen",
+                tiefe_spalte="Abs_Tiefe_Kopf_BB",
+                mapbox_center=mapbox_center_verbringen,
+                zeitzone=zeitzone,
+                zeit_suffix="UTC",
+                baggerfelder=baggerfelder,
+                dichte_polygone=st.session_state.get("dichte_polygone"),
+                show_status1=True,
+                show_status2=False,
+                show_status3=True,
+                show_status456=True,
+                return_fig=True
+            )
+            fig_karte_verbringen.update_layout(mapbox_zoom=zoom_verbringen)
+            pio.write_image(fig_karte_verbringen, "karte_verbringen.png", format="png", width=900, height=600, scale=2)
+        
+            # -----------------------------------------------------------------------------------------------------------------
+            # 📄 PDF erzeugen (aus HTML-Template) und Download ermöglichen
+            # -----------------------------------------------------------------------------------------------------------------
+            st.markdown("### PDF-Export für gewählten Umlauf")
+        
+            if umlauf_auswahl != "Alle" and row is not None:
+                # 🧾 HTML für Export generieren (inkl. Kennzahlen, Strecken, Grafiken etc.)
+                html_export = generate_export_html(
+                    umlauf_row=row,
+                    kennzahlen=kennzahlen,
+                    tds_werte=tds_werte,
+                    strecken=strecke_disp,
+                    zeitzone=zeitzone,
+                    zeitformat=zeitformat,
+                    seite=seite,
+                    pf=pf, pw=pw, pb=pb,
+                    dichtewerte=dichtewerte,
+                    abrechnung=abrechnung,
+                    amob_dauer=amob_dauer,
+                    df_admin=df_admin,
+                    bagger_namen=bagger_namen,
+                    verbring_namen=verbring_namen,
+                    df=df,
+                    baggerfelder=baggerfelder
+                )
+        
+                # 📥 PDF-Datei via Playwright erzeugen
+                umlauf = get_admin_value(df_admin, "Umlauf")
+                pdf_bytes = export_html_to_pdf_playwright(html_export, umlauf=umlauf)
+
+        
+                # ⬇️ Download-Button anzeigen
+                st.download_button(
+                    "📄 PDF herunterladen",
+                    data=pdf_bytes,
+                    file_name=f"TSHD_Report_Umlauf_{row['Umlauf']}.pdf",
+                    mime="application/pdf"
+                )
+            else:
+                st.info("Bitte einen einzelnen Umlauf auswählen.")
+
 
 
 

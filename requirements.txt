@@ -7,3 +7,6 @@ shapely
 pyproj
 openpyxl
 streamlit-option-menu
+playwright
+pypdf
+

@@ -34,7 +34,7 @@ def status_bereiche(df, status_liste):
 # -------------------------------------------------------------------------------------------------------------------------------
 
 
-def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, seite="BB+SB", plot_key="prozessgrafik"):
+def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, seite="BB+SB", plot_key="prozessgrafik", return_fig=False):
 
     df_full = df.copy()
 
@@ -113,10 +113,17 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
                         fillcolor=farbe,
                         layer="below",
                         line_width=0,
-                        annotation_text=phase,
-                        annotation_position="top left"
                     )
-
+                    fig.add_annotation(
+                        x=convert_timestamp(t0_clip, zeitzone),
+                        y=1.05,  # etwas höher als oberer Rand (1 = oberer Rand des Plots)
+                        xref="x",
+                        yref="paper",
+                        text=phase,
+                        showarrow=False,
+                        font=dict(size=14, color="gray"),
+                        align="left"
+                    )
 
 
     # Kurven zeichnen
@@ -206,29 +213,49 @@ def zeige_prozessgrafik_tab(df, zeitzone, row, schiffsparameter, schiff, werte, 
         )
         fig.add_annotation(
             x=ts_conv,
-            y=1.05,
+            y=1.10,
             xref="x", yref= "paper",
             text=label,
             showarrow=False,
-            font=dict(size=11, color="black")
+            font=dict(size=14, color="black")
         )
 
     # Layout
     fig.update_layout(
         height=600,
+        font=dict(size=14),
         yaxis=dict(showticklabels=False, gridcolor="lightgray"),
-        xaxis=dict(title="Zeit", type="date", showgrid=True, gridcolor="lightgray"),
+        xaxis=dict(
+            title="",
+            type="date",
+            showgrid=True,
+            gridcolor="lightgray",
+            title_font=dict(size=16),  # Titelgröße
+            tickfont=dict(size=14),    # Beschriftungsgröße (Ticks)
+        ),
         hovermode="x unified",
         showlegend=True,
-        legend=dict(orientation="v", x=1.02, y=1)
+        legend=dict(
+            font=dict(size=14),          # Legende
+            orientation="v",
+            x=1.02,
+            y=1
+        ),
     )
 
-    st.plotly_chart(fig, use_container_width=True, key=plot_key)
+
+
+    if return_fig:
+        return fig  # ➤ nur zurückgeben, nicht anzeigen
+    else:
+        st.plotly_chart(fig, use_container_width=True, key=plot_key)
+
+    
 
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📏 zeige_baggerkopftiefe_grafik – Separate Grafik zur Darstellung der Baggertiefe (nur Status 2)
 # -------------------------------------------------------------------------------------------------------------------------------
-def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, toleranz_oben=0.5, toleranz_unten=0.5):
+def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, toleranz_oben=0.5, toleranz_unten=0.5, return_fig=False):
 
     """
     Zeigt die absolute Tiefe des Baggerkopfs im Vergleich zur Solltiefe über die Zeit.
@@ -363,12 +390,16 @@ def zeige_baggerkopftiefe_grafik(df, zeitzone, seite="BB+SB", solltiefe=None, to
     # 🎨 Layout & Darstellung
     fig2.update_layout(
         height=600,
-        yaxis=dict(title="Tiefe [m]", range=[y_min, y_max], showgrid=True, gridcolor="lightgray"),
-        xaxis=dict(title="Zeit", type="date", showgrid=True, gridcolor="lightgray"),
+        yaxis=dict(title="Tiefe [m]", range=[y_min, y_max], showgrid=True, gridcolor="lightgray", title_font=dict(size=16),tickfont=dict(size=14)),
+        xaxis=dict(title="Zeit", type="date", showgrid=True, gridcolor="lightgray",title_font=dict(size=16),tickfont=dict(size=14)),
         hovermode="x unified",
         showlegend=True,
-        legend=dict(orientation="v", x=1.02, y=1),
+        legend=dict(orientation="v", x=1.02, y=1, font=dict(size=14))
     )
 
-    # ⬆ Anzeige im Streamlit-Frontend
-    st.plotly_chart(fig2, use_container_width=True)
+    if return_fig:
+        return fig2
+    else:
+        st.plotly_chart(fig2, use_container_width=True)
+    
+    

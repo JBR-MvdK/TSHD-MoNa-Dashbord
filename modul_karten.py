@@ -62,7 +62,7 @@ def berechne_map_center_zoom(
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📍 plot_karte – Hauptfunktion zur Darstellung der Fahrtphasen (Status 1–6) auf einer Mapbox-Karte
 # -------------------------------------------------------------------------------------------------------------------------------
-def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None, dichte_polygone=None, show_status1=True, show_status2=True, show_status3=True, show_status456=True):
+def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_center, zeitzone, zeit_suffix="UTC", focus_trace=None, baggerfelder=None, dichte_polygone=None, show_status1=True, show_status2=True, show_status3=True, show_status456=True, return_fig=False):
 
     """
     Visualisiert den Fahrtverlauf anhand des Status-Feldes auf einer interaktiven Karte.
@@ -274,7 +274,12 @@ def plot_karte(df, transformer, seite, status2_label, tiefe_spalte, mapbox_cente
         )
     )
 
-    return fig, df_status2, df_456
+    if return_fig:
+        return fig, df_status2, df_456
+    else:
+        st.plotly_chart(fig, use_container_width=True)
+        return None, df_status2, df_456
+
 
 # -------------------------------------------------------------------------------------------------------------------------------
 # 📋 zeige_umlauf_info_karte – Zeigt zusammenfassende Informationen zum gewählten Umlauf (inkl. Phasenstart/-dauer)
