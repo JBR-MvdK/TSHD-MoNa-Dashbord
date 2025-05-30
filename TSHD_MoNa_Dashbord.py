@@ -2119,7 +2119,8 @@ if uploaded_files:
                 
                 # PDF aus HTML generieren
                 umlauf = get_admin_value(df_admin, "Umlauf")
-                pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key)
+                pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key, umlauf=umlauf)
+
                 
                 # ⬇️ Download-Button anzeigen
                 st.download_button(

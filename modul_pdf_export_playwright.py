@@ -40,7 +40,7 @@ def export_html_to_pdf_playwright(html_content: str, umlauf: str = "") -> bytes:
         page.set_content(html_content, wait_until="networkidle")
         pdf_bytes = page.pdf(
             format="A4", 
-            margin={"top": "10mm", "bottom": "20mm", "left": "15mm", "right": "5mm"},
+            margin={"top": "10mm", "bottom": "10mm", "left": "15mm", "right": "5mm"},
             print_background=True,
             display_header_footer=True,
             header_template="<div></div>",
@@ -53,15 +53,44 @@ def export_html_to_pdf_playwright(html_content: str, umlauf: str = "") -> bytes:
 
 
 
-def export_html_to_pdf_pdfshift(html_content: str, api_key: str) -> bytes:
-    """Wandelt HTML-Content via PDFShift (Cloud) in eine PDF-Datei um."""
+def export_html_to_pdf_pdfshift(html_content: str, api_key: str, umlauf: str = "") -> bytes:
+    """Erzeugt PDF über PDFShift – mit Footer direkt im HTML und korrektem Margin."""
+
+    # Footer-HTML mit Seitenzahlen direkt ins HTML einbauen
+    footer_html = f"""
+    <div style='
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        font-size: 9px;
+        color: #888;
+        font-family: "Open Sans", sans-serif;
+        padding: 0 1cm;
+        display: flex;
+        justify-content: space-between;'>
+        <span>TSHD Report – Umlauf-Nr.: {umlauf}</span>
+        <span>Seite {{page}} von {{total}}</span>
+    </div>
+    """
+
+
+    # Footer direkt vor </body> einfügen
+    full_html = html_content.replace("</body>", footer_html + "\n</body>")
+
     response = requests.post(
-        "https://api.pdfshift.io/v2/convert/",  # ✅ aktualisierte URL
-        auth=(api_key, ""),  # PDFShift nutzt Basic Auth
+        "https://api.pdfshift.io/v2/convert/",
+        auth=(api_key, ""),
         json={
-            "source": html_content,
+            "source": full_html,
             "landscape": False,
-            "use_print": False
+            "use_print": True,
+            "margin": {
+                "top": "15mm",
+                "bottom": "5mm",
+                "left": "15mm",
+                "right": "5mm"
+            }
         },
     )
 
@@ -69,6 +98,12 @@ def export_html_to_pdf_pdfshift(html_content: str, api_key: str) -> bytes:
         return response.content
     else:
         raise Exception(f"PDFShift Fehler: {response.status_code} – {response.text}")
+
+
+
+
+
+
 
 
 
