@@ -2066,7 +2066,7 @@ if uploaded_files:
             # ➕ Zoom manuell setzen (wie im Karte-Tab)
             fig_karte_baggern.update_layout(mapbox_zoom=zoom_baggern)
             
-            pio.write_image(fig_karte_baggern, "karte_baggern.png", format="png", width=900, height=600, scale=2)
+            pio.write_image(fig_karte_baggern, "karte_baggern.png", format="png", width=900, height=600, scale=1)
         
             # -----------------------------------------------------------------------------------------------------------------
             # 🗺️ Kartenansicht Verbringstelle (Status 4/5/6) exportieren
@@ -2093,7 +2093,7 @@ if uploaded_files:
                 return_fig=True
             )
             fig_karte_verbringen.update_layout(mapbox_zoom=zoom_verbringen)
-            pio.write_image(fig_karte_verbringen, "karte_verbringen.png", format="png", width=900, height=600, scale=2)
+            pio.write_image(fig_karte_verbringen, "karte_verbringen.png", format="png", width=900, height=600, scale=1)
         
             # -----------------------------------------------------------------------------------------------------------------
             # 📄 PDF erzeugen (aus HTML-Template) und Download ermöglichen
