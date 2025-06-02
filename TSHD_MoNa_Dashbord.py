@@ -2128,12 +2128,16 @@ if uploaded_files:
                 html_final = wrap_html_for_print(html_raw, umlauf=umlauf, df_admin=df_admin)
 
                 # 💬 Hinweis anzeigen
+                # 💬 Hinweis anzeigen
                 st.info(
                     "**Export-Hinweis**\n\n"
-                    "Bitte überprüfe vor dem Export, ob **alle Projektdaten korrekt** sind – insbesondere Zeitzone, Auftrag und Umlauf.\n\n"
-                    "Es wird eine **HTML-Datei** erstellt. Diese kannst du in einem **Browser** (z. B. Chrome oder Firefox) öffnen und dann über **Drucken → eine PDF speichern**.\n\n"
-                    "Achte beim Drucken darauf, in den Druckeinstellungen die **Kopf- und Fußzeilen zu deaktivieren**."
+                    "- Prüfe, ob **alle administrativen Projektdaten korrekt** sind (z. B. Zeitzone, Auftrag, Umlauf).\n"
+                    "- Die exportierte Datei ist eine **HTML-Datei** – öffne sie in einem **Browser** (z. B. Chrome oder Firefox).\n"
+                    "- Wähle dort **Drucken → Speichern als PDF**.\n"
+                    "- Der Druck ist auf **DIN A4 optimiert**.\n"
+                    "- Achte darauf, in den Druckeinstellungen die **Kopf- und Fußzeilen zu deaktivieren**."
                 )
+
 
                 dateiname = f"TSHD_Report_{schiff}_Umlauf_{umlauf}.html"
                 dateiname = dateiname.replace(" ", "_")
@@ -2141,7 +2145,7 @@ if uploaded_files:
 
                 # 📎 Download-Button
                 st.download_button(
-                    "⬇️ HTML herunterladen",
+                    ":material/download: HTML herunterladen",
                     data=html_final,
                     file_name=dateiname,
                     mime="text/html"

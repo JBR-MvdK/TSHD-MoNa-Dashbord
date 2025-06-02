@@ -90,6 +90,7 @@ def wrap_html_for_print(html_content: str, umlauf: str, df_admin=None) -> str:
                 left: 0;
                 right: 0;
                 font-size: 9px;
+                font-weight: 400;
                 color: #888;
                 font-family: "Open Sans", sans-serif;
                 display: flex;
@@ -108,7 +109,6 @@ def wrap_html_for_print(html_content: str, umlauf: str, df_admin=None) -> str:
 
     <div class="footer">
       <span>TSHD Report – Umlauf-Nr.: {umlauf}</span>
-      <span>Seite <span class="pageNumber"></span> von <span class="totalPages"></span></span>
     </div>
 
     </body>
@@ -328,7 +328,7 @@ def generate_export_html(
         body {{ font-family: 'Open Sans', sans-serif; margin: 20px; }}
         h1 {{ color: #204060; font-weight: 600; font-size: 24px; }}
         h2 {{ color: #204060; font-weight: 400; font-size: 16px; }}
-        div {{ color: #31333F; font-weight: 400; font-size: 14px; font-weight: 600; }}
+        div {{ color: #31333F; font-weight: 400; font-size: 14px; }}
         table {{ color: #31333F; font-weight: 400; font-size: 11px; width: 95%; line-height: 1.3;}}
         p {{ color: #31333F; font-weight: 400; font-size: 12px; }}
         .panel {{ background:#f7fafe; border-radius:12px; padding:12px; margin:12px 0; }}
