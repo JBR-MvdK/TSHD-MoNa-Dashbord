@@ -142,7 +142,7 @@ from modul_startend_strategie import STRATEGIE_REGISTRY
 # 🌐 Geokoordinaten-Transformation (z. B. UTM → WGS84) für Kartendarstellung
 from pyproj import Transformer
 
-from modul_pdf_export_playwright import export_html_to_pdf_playwright, generate_export_html, export_html_to_pdf_pdfshift
+from modul_html_export import generate_export_html, wrap_html_for_print
 
 
 # ============================================================================================
@@ -173,6 +173,11 @@ def set_admin_value(feld, wert):
     df_admin = df_admin[df_admin["Feld"] != feld]  # Entferne ggf. alten Eintrag
     neue_zeile = pd.DataFrame([{"Feld": feld, "Wert": wert}])
     st.session_state["df_admin"] = pd.concat([df_admin, neue_zeile], ignore_index=True)
+    
+   
+def speichere_zeitzone_admin():
+    zeitzone = st.session_state["zeitzone_wahl"]
+    set_admin_value("Zeitzone", zeitzone)
 
 # Kundenliste vorbereiten
 kunden_json_path = "kunden.json"
@@ -456,7 +461,7 @@ with st.sidebar.expander(":material/trending_up: Bonus-/Malussystem", expanded=F
 #============================================================================================
 
 # --- Dichteparameter Setup ---
-with st.sidebar.expander(":material/settings: Setup – Berechnungen"):
+with st.sidebar.expander(":material/settings: Setup – Globale Dichtewerte"):
     pf = st.number_input(
         "Feststoffdichte pf [t/m³]",
         min_value=2.0, max_value=3.0,
@@ -474,8 +479,8 @@ with st.sidebar.expander(":material/settings: Setup – Berechnungen"):
         value=1.98, step=0.01, format="%.2f"
     )
     
-    st.markdown("---") 
-    
+
+with st.sidebar.expander(":material/settings: Setup – Umlaufberechnung"):
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
         min_value=0.0, max_value=2.0,
@@ -516,8 +521,8 @@ with st.sidebar.expander(":material/settings: Setup – Berechnungen"):
         value=True,
         help="Wenn aktiviert, werden gespeicherte Strategien aus der Schiffsparameterdatei übernommen."
     )
-    validiere_verbring_start = st.toggle("Verklappung validieren (Fehlstarts vermeiden)", value=True)
-    verbring_ende_smart = st.toggle("Verbring-Ende dynamisch erkennen (statt letztem Status)", value=True)
+    validiere_verbring_start = st.toggle("Start-Verbring - Absinkpunkt verwenden", value=False)
+    verbring_ende_smart = st.toggle("Verbring-Ende dynamisch erkennen (statt letztem Status)", value=False)
    
 # Platzhalter für Erkennungsinfo Koordinatensystem
 koordsys_status = st.sidebar.empty()
@@ -790,6 +795,8 @@ if uploaded_files:
             dichte_grenze=dichte_grenze,
             rueckblick_minute=rueckblick_minute,
             min_vollfahrt_dauer_min=min_vollfahrt_dauer_min,
+            validiere_verbring_start=validiere_verbring_start,
+            verbring_ende_smart=verbring_ende_smart
         )
         
         # 🧪 Kopie zur späteren parallelen Verwendung
@@ -878,8 +885,14 @@ if uploaded_files:
             zeitzone = st.selectbox(
                 ":material/public: Zeitzone",
                 ["UTC", "Lokal (Europe/Berlin)"],
-                index=0
+                index=0,
+                key="zeitzone_wahl",
+                on_change=speichere_zeitzone_admin
             )
+        # 🧠 Beim allerersten Mal: Wenn noch nicht im df_admin → direkt setzen
+        if not "Zeitzone" in df_admin["Feld"].values:
+            set_admin_value("Zeitzone", st.session_state["zeitzone_wahl"])
+
         # ------------------------------------------------------------------------------------------------
         # 🕓 7. Zeitzonen prüfen und ggf. auf UTC setzen
         # ------------------------------------------------------------------------------------------------
@@ -2017,7 +2030,7 @@ if uploaded_files:
                     return_fig=True
                 )
                 if fig_baggerkopftiefe is not None:
-                    pio.write_image(fig_baggerkopftiefe, "baggerkopftiefe.png", format="png", width=1400, height=500, scale=2)
+                    pio.write_image(fig_baggerkopftiefe, "baggerkopftiefe.png", format="png", width=1400, height=600, scale=2)
                 else:
                     st.warning("Keine Baggerkopftiefe-Grafik generiert – eventuell keine Status-2-Daten vorhanden.")
 
@@ -2086,12 +2099,12 @@ if uploaded_files:
             st.markdown("### PDF-Export für gewählten Umlauf")
         
             if umlauf_auswahl != "Alle" and row is not None:
-                # 🧾 HTML für Export generieren (inkl. Kennzahlen, Strecken, Grafiken etc.)
-                html_export = generate_export_html(
+                # 1️⃣ Rohes HTML erzeugen
+                html_raw = generate_export_html(
                     umlauf_row=row,
                     kennzahlen=kennzahlen,
                     tds_werte=tds_werte,
-                    strecken=strecke_disp,
+                    strecken=strecken,
                     zeitzone=zeitzone,
                     zeitformat=zeitformat,
                     seite=seite,
@@ -2105,33 +2118,39 @@ if uploaded_files:
                     df=df,
                     baggerfelder=baggerfelder
                 )
-
-
-
-
-                # 📥 PDF-Datei via PDFShift erzeugen (nur Cloud-tauglich)
-                
-                # PDFShift-API-Key aus den Secrets laden
-                api_key = st.secrets.get("PDFSHIFT_API_KEY")
-                if not api_key:
-                    st.error("Fehlender API-Key für PDFShift in den Streamlit Secrets.")
-                    st.stop()
-                
-                # PDF aus HTML generieren
+            
+            
+                # 2️⃣ Für Druck/Export vorbereiten (z. B. Footer & Styles)
+                auftragnehmer = get_admin_value(df_admin, "Auftragnehmer")
                 umlauf = get_admin_value(df_admin, "Umlauf")
-                pdf_bytes = export_html_to_pdf_pdfshift(html_export, api_key, umlauf=umlauf)
+                html_final = wrap_html_for_print(html_raw, umlauf=umlauf, df_admin=df_admin)
 
-                
-                # ⬇️ Download-Button anzeigen
-                st.download_button(
-                    "📄 PDF herunterladen",
-                    data=pdf_bytes,
-                    file_name=f"TSHD_Report_Umlauf_{row['Umlauf']}.pdf",
-                    mime="application/pdf"
+                # 💬 Hinweis anzeigen
+                st.info(
+                    "**Export-Hinweis**\n\n"
+                    "Bitte überprüfe vor dem Export, ob **alle Projektdaten korrekt** sind – insbesondere Zeitzone, Auftrag und Umlauf.\n\n"
+                    "Es wird eine **HTML-Datei** erstellt. Diese kannst du in einem **Browser** (z. B. Chrome oder Firefox) öffnen und dann über **Drucken → eine PDF speichern**.\n\n"
+                    "Achte beim Drucken darauf, in den Druckeinstellungen die **Kopf- und Fußzeilen zu deaktivieren**."
                 )
 
+                dateiname = f"TSHD_Report_{schiff}_Umlauf_{umlauf}.html"
+                dateiname = dateiname.replace(" ", "_")
+
+
+                # 📎 Download-Button
+                st.download_button(
+                    "⬇️ HTML herunterladen",
+                    data=html_final,
+                    file_name=dateiname,
+                    mime="text/html"
+                )
+
+
+            
             else:
                 st.info("Bitte einen einzelnen Umlauf auswählen.")
+
+
 
 
 

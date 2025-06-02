@@ -42,8 +42,6 @@ def nummeriere_umlaeufe(df: pd.DataFrame, startwert: int = 1) -> pd.DataFrame:
     return df
 
 
-
-
 # === Funktion: extrahiere_umlauf_startzeiten(...) ============================================================================
 def extrahiere_umlauf_startzeiten(
     df,
@@ -53,7 +51,9 @@ def extrahiere_umlauf_startzeiten(
     seite=None,
     dichte_grenze=1.10,
     rueckblick_minute=2,
-    min_vollfahrt_dauer_min=1.0
+    min_vollfahrt_dauer_min=1.0,
+    validiere_verbring_start=False,
+    verbring_ende_smart=False
 ):
     """
     Extrahiert Start- und Endzeiten je Umlauf anhand definierter Übergangslogik (Status & Sensordaten).
@@ -65,12 +65,15 @@ def extrahiere_umlauf_startzeiten(
     """
 
     result = []
+    statuswechsel_kandidaten = []
     umlauf_nr = startwert
     aktueller_umlauf = {"Umlauf": umlauf_nr}
     status_phase = 1
     index = 0
     status_vorher = None
-
+    absink_schwelle = 5.0 
+    
+    
     # 🧭 Aktive Baggerseite bestimmen (manuell oder automatisch erkannt)
     if not seite:
         seite = erkenne_baggerseite(df)
@@ -98,6 +101,22 @@ def extrahiere_umlauf_startzeiten(
         status = int(row["Status"])
         geschw = float(row.get("Geschwindigkeit", 0))
         ts = row["timestamp"]
+
+    # === Sonderfall-Korrekturen: Falsche Zwischen-Statuswerte ignorieren =====================
+
+        if status_vorher == 3 and status in [4, 5, 6]:
+            statuswechsel_kandidaten.append(ts)
+
+        # 2 → 1 → 3 → ...  (Fehlerhafter 1er nach Baggern)
+        if status_phase == 3 and status == 1 and status_vorher == 2:
+            index += 1
+            continue
+    
+        # 3 → 1 → 4/5/6 → ... (Fehlerhafter 1er vor Verbringen)
+        if status_phase == 4 and status == 1 and status_vorher == 3:
+            index += 1
+            continue
+
 
         # Phase 1: Leerfahrt erkennen (Startbedingung: Status==1 + Mindestfahrt)
         if status_phase == 1 and status == 1 and geschw > min_fahr_speed:
@@ -188,19 +207,48 @@ def extrahiere_umlauf_startzeiten(
             status_phase = 4
 
 
-
-
-
-        # Phase 4: Verklappung / Pumpen / Rainbow (Ende eines Umlaufs)
+        # === Phase 4: Verklappung / Pumpen / Rainbow ===
         elif status_phase == 4 and status in [4, 5, 6]:
-            if "Start Verklappen/Pump/Rainbow" not in aktueller_umlauf:
-                aktueller_umlauf["Start Verklappen/Pump/Rainbow"] = ts
-            aktueller_umlauf["Ende"] = ts
+        
+            verbring_start_ts = statuswechsel_kandidaten[-1] if statuswechsel_kandidaten else ts
+        
+            if validiere_verbring_start:
+                df_after = df[df["timestamp"] >= verbring_start_ts].copy().reset_index(drop=True)
+        
+                if "Ladungsvolumen" in df_after.columns and len(df_after) > 1:
+                    volumes = df_after["Ladungsvolumen"].fillna(method="ffill")
+        
+                    # 🎯 Referenzwert = Volumen direkt beim Statuswechsel
+                    start_vol = volumes.iloc[0]
+        
+                    # 📉 Differenz gegen diesen Referenzwert berechnen
+                    drops = volumes - start_vol
+        
+                    # 🔍 Finde ersten Punkt, der die Schwelle überschreitet
+                    absink_index = drops[drops < -absink_schwelle].first_valid_index()
+        
+                    if absink_index is not None and absink_index > 0:
+                        # 🕰️ Zeitpunkt direkt vor dem erkannten Absinken
+                        refined_ts = df_after.loc[absink_index - 1, "timestamp"]
+        
+                        # 🧷 Nur übernehmen, wenn er nicht vor dem Statuswechsel liegt
+                        if refined_ts >= verbring_start_ts:
+                            verbring_start_ts = refined_ts
+        
+            aktueller_umlauf["Start Verklappen/Pump/Rainbow"] = verbring_start_ts
 
+
+
+        
+            # Immer Endzeit aktualisieren
+            aktueller_umlauf["Ende"] = ts
+        
             if index + 1 == len(df) or int(df.iloc[index + 1]["Status"]) == 1:
                 result.append(aktueller_umlauf)
                 umlauf_nr += 1
                 status_phase = 1
+                statuswechsel_kandidaten = []  # Reset für nächsten Umlauf
+
 
         status_vorher = status
         index += 1

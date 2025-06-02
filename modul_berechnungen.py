@@ -276,7 +276,7 @@ def berechne_umlauf_auswertung(df, row, schiffsparameter, strategie, pf, pw, pb,
     strecken = berechne_strecken(df_umlauf_ext, "RW_Schiff", "HW_Schiff", status_col, epsg_code)
 
     def format_km(val):
-        return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if val is not None else "-"
+        return f"{val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".") if val is not None else "-"
 
     strecke_disp = {
         "leerfahrt": format_km(strecken.get("leerfahrt")),
