@@ -143,7 +143,9 @@ from modul_startend_strategie import STRATEGIE_REGISTRY
 from pyproj import Transformer
 
 from modul_html_export import generate_export_html, wrap_html_for_print
-
+@st.cache_data
+def generate_export_html_cached(*args, **kwargs):
+    return generate_export_html(*args, **kwargs)
 
 # ============================================================================================
 # 🔵 Start der Streamlit App – Grundeinstellungen und Layout
@@ -480,7 +482,7 @@ with st.sidebar.expander(":material/settings: Setup – Globale Dichtewerte"):
     )
     
 
-with st.sidebar.expander(":material/settings: Setup – Umlaufberechnung"):
+with st.sidebar.expander(":material/loop: Setup – Umlaufberechnung"):
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
         min_value=0.0, max_value=2.0,
@@ -2100,7 +2102,7 @@ if uploaded_files:
         
             if umlauf_auswahl != "Alle" and row is not None:
                 # 1️⃣ Rohes HTML erzeugen
-                html_raw = generate_export_html(
+                html_raw = generate_export_html_cached(
                     umlauf_row=row,
                     kennzahlen=kennzahlen,
                     tds_werte=tds_werte,
