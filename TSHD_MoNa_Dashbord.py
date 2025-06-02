@@ -2106,7 +2106,7 @@ if uploaded_files:
                     umlauf_row=row,
                     kennzahlen=kennzahlen,
                     tds_werte=tds_werte,
-                    strecken=strecken,
+                    strecken=strecke_disp,
                     zeitzone=zeitzone,
                     zeitformat=zeitformat,
                     seite=seite,
