@@ -481,7 +481,9 @@ with st.sidebar.expander(":material/settings: Setup – Globale Dichtewerte"):
         value=1.98, step=0.01, format="%.2f"
     )
     
-
+#============================================================================================
+# 🔵 Berechnungs-Parameter Umlauf
+#============================================================================================
 with st.sidebar.expander(":material/loop: Setup – Umlaufberechnung"):
     min_fahr_speed = st.number_input(
         "Mindestgeschwindigkeit für Leerfahrt (knt)",
@@ -498,6 +500,7 @@ with st.sidebar.expander(":material/loop: Setup – Umlaufberechnung"):
         format="%.1f"
     )
     st.markdown("---") 
+    
     # :material/done: Toggle für Nutzung der Gemischdichte
     nutze_gemischdichte = st.toggle(
         "Gemischdichte für Start- und Endzeitpunkt Baggern verwenden?",
@@ -523,8 +526,8 @@ with st.sidebar.expander(":material/loop: Setup – Umlaufberechnung"):
         value=True,
         help="Wenn aktiviert, werden gespeicherte Strategien aus der Schiffsparameterdatei übernommen."
     )
-    validiere_verbring_start = st.toggle("Start-Verbring - Absinkpunkt verwenden", value=False)
-    verbring_ende_smart = st.toggle("Verbring-Ende dynamisch erkennen (statt letztem Status)", value=False)
+    validiere_verbring_start = st.toggle("Verbring-Beginn - Absinkpunkt definieren", value=False)
+    verbring_ende_smart = st.toggle("Verbring-Ende - Dynamisch erkennen (statt Statuswechsel)", value=True)
    
 # Platzhalter für Erkennungsinfo Koordinatensystem
 koordsys_status = st.sidebar.empty()
@@ -2066,7 +2069,7 @@ if uploaded_files:
             # ➕ Zoom manuell setzen (wie im Karte-Tab)
             fig_karte_baggern.update_layout(mapbox_zoom=zoom_baggern)
             
-            pio.write_image(fig_karte_baggern, "karte_baggern.png", format="png", width=900, height=600, scale=1)
+            pio.write_image(fig_karte_baggern, "karte_baggern.png", format="png", width=900, height=600, scale=2)
         
             # -----------------------------------------------------------------------------------------------------------------
             # 🗺️ Kartenansicht Verbringstelle (Status 4/5/6) exportieren
@@ -2093,7 +2096,7 @@ if uploaded_files:
                 return_fig=True
             )
             fig_karte_verbringen.update_layout(mapbox_zoom=zoom_verbringen)
-            pio.write_image(fig_karte_verbringen, "karte_verbringen.png", format="png", width=900, height=600, scale=1)
+            pio.write_image(fig_karte_verbringen, "karte_verbringen.png", format="png", width=900, height=600, scale=2)
         
             # -----------------------------------------------------------------------------------------------------------------
             # 📄 PDF erzeugen (aus HTML-Template) und Download ermöglichen
